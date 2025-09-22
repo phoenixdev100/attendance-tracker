@@ -6,6 +6,8 @@ const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const XLSX = require('xlsx');
+const multer = require('multer');
+const upload = multer({ dest: 'uploads/' });
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -93,43 +95,9 @@ const initializeDatabase = async () => {
       END $$;
     `);
 
-    // Insert sample teams with mixed case names
-    await pool.query(`
-      INSERT INTO teams (team_id, team_name) VALUES 
-      ('TEAM001', 'Alpha Team'),
-      ('TEAM002', 'BETA TEAM'),
-      ('TEAM003', 'gamma team'),
-      ('TEAM004', 'Delta TEAM'),
-      ('TEAM005', 'epsilon Team')
-      ON CONFLICT (team_id) DO NOTHING
-    `);
+    // Database tables created successfully - ready for your data upload
 
-    // Insert sample students with team assignments and mixed case names
-    await pool.query(`
-      INSERT INTO students (system_id, name, team_id) VALUES 
-      ('STU001', 'John DOE', 'TEAM001'),
-      ('STU002', 'jane smith', 'TEAM001'),
-      ('STU003', 'Mike Johnson', 'TEAM001'),
-      ('STU004', 'SARAH WILSON', 'TEAM001'),
-      ('STU005', 'david brown', 'TEAM002'),
-      ('STU006', 'Lisa DAVIS', 'TEAM002'),
-      ('STU007', 'CHRIS ANDERSON', 'TEAM002'),
-      ('STU008', 'emma taylor', 'TEAM002'),
-      ('STU009', 'Alex Martinez', 'TEAM003'),
-      ('STU010', 'RACHEL GREEN', 'TEAM003'),
-      ('STU011', 'tom wilson', 'TEAM003'),
-      ('STU012', 'Kevin LEE', 'TEAM004'),
-      ('STU013', 'amy chen', 'TEAM004'),
-      ('STU014', 'Robert KIM', 'TEAM004'),
-      ('STU015', 'JESSICA WANG', 'TEAM005'),
-      ('STU016', 'daniel park', 'TEAM005'),
-      ('STU017', 'Maria GARCIA', 'TEAM005')
-      ON CONFLICT (system_id) DO UPDATE SET 
-        name = EXCLUDED.name,
-        team_id = EXCLUDED.team_id
-    `);
-
-    console.log('Database initialized with teams and sample data');
+    console.log('Database initialized - ready for your data upload');
   } catch (error) {
     console.error('Error initializing database:', error);
   }
@@ -363,6 +331,134 @@ app.get('/api/today-stats', async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'Internal server error. Please try again later.' 
+    });
+  }
+});
+
+// API endpoint to upload Excel file with student data
+app.post('/api/upload-students', upload.single('excelFile'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No Excel file uploaded'
+      });
+    }
+
+    // Read the Excel file
+    const workbook = XLSX.readFile(req.file.path);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    
+    // Convert to JSON
+    const data = XLSX.utils.sheet_to_json(worksheet);
+    
+    if (data.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Excel file is empty or has no valid data'
+      });
+    }
+
+    // Validate required columns
+    const requiredColumns = ['system_id', 'name'];
+    const firstRow = data[0];
+    const missingColumns = requiredColumns.filter(col => !(col in firstRow));
+    
+    if (missingColumns.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing required columns: ${missingColumns.join(', ')}. Required: system_id, name. Optional: team_id`
+      });
+    }
+
+    const client = await pool.connect();
+    let insertedStudents = 0;
+    let updatedStudents = 0;
+    let errors = [];
+
+    try {
+      await client.query('BEGIN');
+
+      for (const row of data) {
+        try {
+          const systemId = row.system_id?.toString().trim().toUpperCase();
+          const name = row.name?.toString().trim();
+          const teamId = row.team_id?.toString().trim().toUpperCase() || null;
+
+          if (!systemId || !name) {
+            errors.push(`Row skipped: Missing system_id or name - ${JSON.stringify(row)}`);
+            continue;
+          }
+
+          // Check if student exists
+          const existingStudent = await client.query(
+            'SELECT system_id FROM students WHERE UPPER(system_id) = $1',
+            [systemId]
+          );
+
+          if (existingStudent.rows.length > 0) {
+            // Update existing student
+            await client.query(
+              'UPDATE students SET name = $1, team_id = $2 WHERE UPPER(system_id) = $3',
+              [name, teamId, systemId]
+            );
+            updatedStudents++;
+          } else {
+            // Insert new student
+            await client.query(
+              'INSERT INTO students (system_id, name, team_id) VALUES ($1, $2, $3)',
+              [systemId, name, teamId]
+            );
+            insertedStudents++;
+          }
+        } catch (rowError) {
+          errors.push(`Error processing row: ${JSON.stringify(row)} - ${rowError.message}`);
+        }
+      }
+
+      await client.query('COMMIT');
+
+      // Clean up uploaded file
+      const fs = require('fs');
+      fs.unlinkSync(req.file.path);
+
+      res.json({
+        success: true,
+        message: `Excel upload completed successfully!`,
+        summary: {
+          totalRows: data.length,
+          inserted: insertedStudents,
+          updated: updatedStudents,
+          errors: errors.length
+        },
+        errors: errors.length > 0 ? errors : undefined
+      });
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+  } catch (error) {
+    console.error('Error uploading Excel file:', error);
+    
+    // Clean up uploaded file on error
+    if (req.file) {
+      const fs = require('fs');
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (cleanupError) {
+        console.error('Error cleaning up file:', cleanupError);
+      }
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Error processing Excel file. Please check the format and try again.',
+      error: error.message
     });
   }
 });

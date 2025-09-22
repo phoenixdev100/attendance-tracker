@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import Alert from './Alert';
+import FileUpload from './FileUpload';
 
 const StatsPage = () => {
   const [stats, setStats] = useState(null);
@@ -273,6 +274,11 @@ const StatsPage = () => {
             )}
           </>
         )}
+
+        {/* File Upload Section */}
+        <div className="upload-section-container">
+          <FileUpload onUploadSuccess={loadStats} />
+        </div>
 
         <div className="actions">
           <Link to="/" className="nav-link">

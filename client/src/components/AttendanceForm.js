@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../config/api';
 import Alert from './Alert';
 
 const AttendanceForm = () => {
@@ -106,7 +106,7 @@ const AttendanceForm = () => {
         ? { systemId: currentId }
         : { teamId: currentId };
         
-      const response = await axios.post('/api/mark-present', requestData);
+      const response = await api.post('/api/mark-present', requestData);
 
       if (response.data.success) {
         let successMessage = (
@@ -184,7 +184,7 @@ const AttendanceForm = () => {
     hideAlert();
 
     try {
-      const response = await axios.post('/api/mark-absent', {
+      const response = await api.post('/api/mark-absent', {
         systemId: trimmedId
       });
 
@@ -252,7 +252,7 @@ const AttendanceForm = () => {
     setDownloading(true);
     
     try {
-      const response = await axios.get('/api/export-excel', {
+      const response = await api.get(`/api/export-excel`, {
         responseType: 'blob'
       });
 
@@ -294,7 +294,7 @@ const AttendanceForm = () => {
     hideAlert();
 
     try {
-      const response = await axios.get(`/api/team/${teamId.trim()}`);
+      const response = await api.get(`/api/team/${teamId.trim()}`);
       
       if (response.data.success) {
         setTeamInfo(response.data.team);
@@ -303,7 +303,7 @@ const AttendanceForm = () => {
         setShowTeamSelection(true);
         
         showAlert(
-          <span><span className="alert-icon">👥</span>Team loaded: {response.data.team.teamName} ({response.data.totalMembers} members)</span>,
+          <span><span className="alert-icon">👥</span>Team loaded: {response.data.team.team_name} ({response.data.totalMembers} members)</span>,
           'success'
         );
       }
@@ -342,14 +342,14 @@ const AttendanceForm = () => {
     hideAlert();
 
     try {
-      const response = await axios.get(`/api/student/${systemId.trim()}`);
+      const response = await api.get(`/api/student/${systemId.trim()}`);
       
       if (response.data.success) {
         setStudentInfo(response.data.student);
         setShowStudentDetails(true);
         
         showAlert(
-          <span><span className="alert-icon">👤</span>Student found: {response.data.student.name} ({response.data.student.teamName || 'No Team'})</span>,
+          <span><span className="alert-icon">👤</span>Student found: {response.data.student.name}{response.data.student.team_names ? ` (${response.data.student.team_names})` : ''}</span>,
           'success'
         );
       }
@@ -397,8 +397,8 @@ const AttendanceForm = () => {
     hideAlert();
 
     try {
-      const response = await axios.post('/api/mark-team-attendance', {
-        teamId: teamInfo.teamId,
+      const response = await api.post('/api/mark-team-attendance', {
+        teamId: teamInfo.team_id,
         selectedStudents: selectedMembers
       });
 
@@ -546,8 +546,8 @@ const AttendanceForm = () => {
               <h3>👤 {studentInfo.name}</h3>
               <div className="student-meta">
                 <span className="student-id-badge">{studentInfo.systemId}</span>
-                {studentInfo.teamName && (
-                  <span className="team-badge">Team: {studentInfo.teamName}</span>
+                {studentInfo.team_names && (
+                  <span className="team-badge">Teams: {studentInfo.team_names}</span>
                 )}
               </div>
             </div>
@@ -582,7 +582,7 @@ const AttendanceForm = () => {
         {showTeamSelection && teamInfo && (
           <div className="team-selection-section">
             <div className="team-header">
-              <h3>👥 {teamInfo.teamName}</h3>
+              <h3>👥 {teamInfo.team_name}</h3>
               <p className="team-stats">
                 {selectedMembers.length} of {teamMembers.length} members selected
               </p>

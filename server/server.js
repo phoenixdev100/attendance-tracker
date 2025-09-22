@@ -7,7 +7,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const XLSX = require('xlsx');
 const multer = require('multer');
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ dest: path.join(__dirname, 'uploads/') });
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -74,6 +74,16 @@ const getTodayDate = () => {
 // Initialize database with teams and sample data
 const initializeDatabase = async () => {
   try {
+    // Create students table (without team_id - will use junction table)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS students (
+        system_id VARCHAR(20) PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        dept VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Create teams table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS teams (
@@ -84,20 +94,31 @@ const initializeDatabase = async () => {
       )
     `);
 
-    // Add team_id column to students table if it doesn't exist
+    // Create student_teams junction table for many-to-many relationship
     await pool.query(`
-      DO $$ 
-      BEGIN 
-          IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                         WHERE table_name='students' AND column_name='team_id') THEN
-              ALTER TABLE students ADD COLUMN team_id VARCHAR(20) REFERENCES teams(team_id);
-          END IF;
-      END $$;
+      CREATE TABLE IF NOT EXISTS student_teams (
+        id SERIAL PRIMARY KEY,
+        student_id VARCHAR(20) REFERENCES students(system_id) ON DELETE CASCADE,
+        team_id VARCHAR(20) REFERENCES teams(team_id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(student_id, team_id)
+      )
+    `);
+
+    // Create attendance table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS attendance (
+        id SERIAL PRIMARY KEY,
+        student_id VARCHAR(20) REFERENCES students(system_id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        present BOOLEAN DEFAULT false,
+        recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(student_id, date)
+      )
     `);
 
     // Database tables created successfully - ready for your data upload
 
-    console.log('Database initialized - ready for your data upload');
   } catch (error) {
     console.error('Error initializing database:', error);
   }
@@ -108,8 +129,8 @@ initializeDatabase();
 
 // Handle React routing - serve React app for non-API routes
 if (process.env.NODE_ENV === 'production') {
-  // Serve React build files
-  app.use(express.static(path.join(__dirname, 'client/build')));
+  // Serve React build files (client is now at ../client from server directory)
+  app.use(express.static(path.join(__dirname, '../client/build')));
   
   // Handle React routing - catch all non-API routes
   app.get('*', (req, res) => {
@@ -117,7 +138,7 @@ if (process.env.NODE_ENV === 'production') {
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ success: false, message: 'API endpoint not found' });
     }
-    res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
+    res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
   });
 } else {
   // Development mode - just handle API routes
@@ -160,7 +181,7 @@ app.post('/api/mark-present', async (req, res) => {
 
       if (trimmedSystemId) {
         // Mark individual student by system ID
-        const studentQuery = 'SELECT system_id, name, team_id FROM students WHERE system_id = $1';
+        const studentQuery = 'SELECT system_id, name, dept FROM students WHERE system_id = $1';
         const studentResult = await client.query(studentQuery, [trimmedSystemId]);
 
         if (studentResult.rows.length === 0) {
@@ -176,9 +197,10 @@ app.post('/api/mark-present', async (req, res) => {
       } else if (trimmedTeamId) {
         // Mark all students in the team
         const teamQuery = `
-          SELECT s.system_id, s.name, s.team_id, t.team_name 
+          SELECT s.system_id, s.name, s.dept, t.team_id, t.team_name 
           FROM students s 
-          JOIN teams t ON s.team_id = t.team_id 
+          JOIN student_teams st ON s.system_id = st.student_id
+          JOIN teams t ON st.team_id = t.team_id 
           WHERE UPPER(t.team_id) = $1
         `;
         const teamResult = await client.query(teamQuery, [trimmedTeamId]);
@@ -307,10 +329,15 @@ app.get('/api/today-stats', async (req, res) => {
 
     // Get list of present students with details
     const presentStudentsQuery = `
-      SELECT s.system_id, s.name, a.recorded_at
+      SELECT s.system_id, s.name, s.dept, a.recorded_at,
+             STRING_AGG(DISTINCT t.team_id, ', ') as team_ids,
+             STRING_AGG(DISTINCT t.team_name, ', ') as team_names
       FROM students s
       INNER JOIN attendance a ON s.system_id = a.student_id
+      LEFT JOIN student_teams st ON s.system_id = st.student_id
+      LEFT JOIN teams t ON st.team_id = t.team_id
       WHERE a.date = $1 AND a.present = true
+      GROUP BY s.system_id, s.name, s.dept, a.recorded_at
       ORDER BY a.recorded_at ASC
     `;
     const presentStudentsResult = await pool.query(presentStudentsQuery, [today]);
@@ -490,10 +517,12 @@ app.get('/api/team/:teamId', async (req, res) => {
         t.team_name,
         s.system_id,
         s.name as student_name,
+        s.dept,
         COALESCE(a.present, false) as is_present_today,
         a.recorded_at
       FROM teams t
-      LEFT JOIN students s ON t.team_id = s.team_id
+      LEFT JOIN student_teams st ON t.team_id = st.team_id
+      LEFT JOIN students s ON st.student_id = s.system_id
       LEFT JOIN attendance a ON s.system_id = a.student_id AND a.date = $1
       WHERE UPPER(t.team_id) = $2
       ORDER BY s.system_id ASC
@@ -513,8 +542,8 @@ app.get('/api/team/:teamId', async (req, res) => {
       return res.json({
         success: true,
         team: {
-          teamId: result.rows[0].team_id,
-          teamName: result.rows[0].team_name
+          team_id: result.rows[0].team_id,
+          team_name: result.rows[0].team_name
         },
         members: [],
         message: 'Team found but has no members assigned'
@@ -522,13 +551,14 @@ app.get('/api/team/:teamId', async (req, res) => {
     }
 
     const teamInfo = {
-      teamId: result.rows[0].team_id,
-      teamName: result.rows[0].team_name
+      team_id: result.rows[0].team_id,
+      team_name: result.rows[0].team_name
     };
 
     const members = result.rows.map(row => ({
       systemId: row.system_id,
       name: row.student_name,
+      dept: row.dept,
       isPresentToday: row.is_present_today,
       recordedAt: row.recorded_at
     }));
@@ -570,14 +600,17 @@ app.get('/api/student/:systemId', async (req, res) => {
       SELECT 
         s.system_id,
         s.name,
-        s.team_id,
-        t.team_name,
+        s.dept,
+        STRING_AGG(DISTINCT t.team_id, ', ') as team_ids,
+        STRING_AGG(DISTINCT t.team_name, ', ') as team_names,
         COALESCE(a.present, false) as is_present_today,
         a.recorded_at
       FROM students s
-      LEFT JOIN teams t ON s.team_id = t.team_id
+      LEFT JOIN student_teams st ON s.system_id = st.student_id
+      LEFT JOIN teams t ON st.team_id = t.team_id
       LEFT JOIN attendance a ON s.system_id = a.student_id AND a.date = $1
       WHERE UPPER(s.system_id) = $2
+      GROUP BY s.system_id, s.name, s.dept, a.present, a.recorded_at
     `;
     
     const result = await pool.query(query, [today, trimmedSystemId]);
@@ -596,8 +629,9 @@ app.get('/api/student/:systemId', async (req, res) => {
       student: {
         systemId: student.system_id,
         name: student.name,
-        teamId: student.team_id,
-        teamName: student.team_name,
+        team_ids: student.team_ids,
+        dept: student.dept,
+        team_names: student.team_names,
         isPresentToday: student.is_present_today,
         recordedAt: student.recorded_at
       }
@@ -635,9 +669,10 @@ app.post('/api/mark-team-attendance', async (req, res) => {
 
       // Verify team exists and get all team members
       const teamQuery = `
-        SELECT s.system_id, s.name 
+        SELECT s.system_id, s.name, s.dept 
         FROM students s 
-        JOIN teams t ON s.team_id = t.team_id 
+        JOIN student_teams st ON s.system_id = st.student_id
+        JOIN teams t ON st.team_id = t.team_id 
         WHERE UPPER(t.team_id) = $1
       `;
       const teamResult = await client.query(teamQuery, [trimmedTeamId]);
@@ -741,60 +776,132 @@ app.post('/api/mark-absent', async (req, res) => {
   const today = getTodayDate();
 
   try {
-    // Check if student exists
-    const studentQuery = 'SELECT * FROM students WHERE UPPER(system_id) = $1';
-    const studentResult = await pool.query(studentQuery, [trimmedSystemId]);
+    const client = await pool.connect();
     
-    if (studentResult.rows.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: `Student with ID "${trimmedSystemId}" not found in the system` 
+    try {
+      await client.query('BEGIN');
+
+      let studentsToMarkAbsent = [];
+      let isTeamOperation = false;
+
+      if (trimmedSystemId) {
+        // Mark individual student absent
+        const studentQuery = 'SELECT system_id, name, dept FROM students WHERE UPPER(system_id) = $1';
+        const studentResult = await client.query(studentQuery, [trimmedSystemId]);
+        
+        if (studentResult.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ 
+            success: false, 
+            message: `Student with ID "${trimmedSystemId}" not found in the system`,
+            invalidId: trimmedSystemId
+          });
+        }
+
+        studentsToMarkAbsent = studentResult.rows;
+      } else if (trimmedTeamId) {
+        // Mark all students in team absent
+        isTeamOperation = true;
+        const teamQuery = `
+          SELECT s.system_id, s.name, s.dept 
+          FROM students s 
+          JOIN student_teams st ON s.system_id = st.student_id
+          JOIN teams t ON st.team_id = t.team_id 
+          WHERE UPPER(t.team_id) = $1
+        `;
+        const teamResult = await client.query(teamQuery, [trimmedTeamId.toUpperCase()]);
+
+        if (teamResult.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ 
+            success: false, 
+            message: `Team with ID "${trimmedTeamId}" not found or has no students` 
+          });
+        }
+
+        studentsToMarkAbsent = teamResult.rows;
+      }
+
+      let markedCount = 0;
+      let alreadyAbsentCount = 0;
+      let noRecordCount = 0;
+      const markedStudents = [];
+
+      // Process each student
+      for (const student of studentsToMarkAbsent) {
+        // Check if student has attendance record for today
+        const attendanceQuery = 'SELECT * FROM attendance WHERE student_id = $1 AND date = $2';
+        const attendanceResult = await client.query(attendanceQuery, [student.system_id, today]);
+
+        if (attendanceResult.rows.length === 0) {
+          noRecordCount++;
+          continue;
+        }
+
+        const attendanceRecord = attendanceResult.rows[0];
+
+        if (!attendanceRecord.present) {
+          alreadyAbsentCount++;
+          continue;
+        }
+
+        // Update attendance to absent
+        const updateQuery = `
+          UPDATE attendance 
+          SET present = false, recorded_at = CURRENT_TIMESTAMP 
+          WHERE student_id = $1 AND date = $2
+        `;
+        await client.query(updateQuery, [student.system_id, today]);
+
+        markedCount++;
+        markedStudents.push({
+          systemId: student.system_id,
+          name: student.name
+        });
+      }
+
+      await client.query('COMMIT');
+
+      // Prepare response message
+      let message;
+      if (isTeamOperation) {
+        message = `Team ${trimmedTeamId}: ${markedCount} student(s) marked absent`;
+        if (alreadyAbsentCount > 0) {
+          message += `, ${alreadyAbsentCount} already absent`;
+        }
+        if (noRecordCount > 0) {
+          message += `, ${noRecordCount} had no attendance record`;
+        }
+      } else {
+        if (markedCount > 0) {
+          message = `${studentsToMarkAbsent[0].name} has been marked as absent for today`;
+        } else if (alreadyAbsentCount > 0) {
+          message = `${studentsToMarkAbsent[0].name} is already marked as absent today`;
+        } else {
+          message = `No attendance record found for ${studentsToMarkAbsent[0].name} today`;
+        }
+      }
+
+      res.json({
+        success: true,
+        message: message,
+        markedCount: markedCount,
+        alreadyAbsentCount: alreadyAbsentCount,
+        noRecordCount: noRecordCount,
+        students: markedStudents,
+        date: today,
+        status: 'absent'
       });
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
-
-    const student = studentResult.rows[0];
-
-    // Check if student has attendance record for today
-    const attendanceQuery = 'SELECT * FROM attendance WHERE student_id = $1 AND date = $2';
-    const attendanceResult = await pool.query(attendanceQuery, [student.system_id, today]);
-
-    if (attendanceResult.rows.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: `No attendance record found for ${student.name} (${student.system_id}) today` 
-      });
-    }
-
-    const attendanceRecord = attendanceResult.rows[0];
-
-    if (!attendanceRecord.present) {
-      return res.status(409).json({ 
-        success: false, 
-        message: `${student.name} (${student.system_id}) is already marked as absent today` 
-      });
-    }
-
-    // Update attendance to absent
-    const updateQuery = `
-      UPDATE attendance 
-      SET present = false, recorded_at = CURRENT_TIMESTAMP 
-      WHERE student_id = $1 AND date = $2
-    `;
-    await pool.query(updateQuery, [student.system_id, today]);
-
-    res.json({
-      success: true,
-      message: `${student.name} has been marked as absent for today`,
-      student: {
-        systemId: student.system_id,
-        name: student.name
-      },
-      date: today,
-      status: 'absent'
-    });
 
   } catch (error) {
-    console.error('Error marking student absent:', error);
+    console.error('Error marking student(s) absent:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Internal server error. Please try again later.' 
@@ -810,15 +917,18 @@ app.get('/api/export-excel', async (req, res) => {
       SELECT 
         s.system_id,
         s.name,
-        s.team_id,
-        t.team_name,
+        s.dept,
+        STRING_AGG(DISTINCT t.team_id, ', ') as team_ids,
+        STRING_AGG(DISTINCT t.team_name, ', ') as team_names,
         a.date,
         a.present,
         a.recorded_at
       FROM students s
-      LEFT JOIN teams t ON s.team_id = t.team_id
+      LEFT JOIN student_teams st ON s.system_id = st.student_id
+      LEFT JOIN teams t ON st.team_id = t.team_id
       LEFT JOIN attendance a ON s.system_id = a.student_id
-      ORDER BY s.team_id ASC, s.system_id ASC, a.date DESC
+      GROUP BY s.system_id, s.name, s.dept, a.date, a.present, a.recorded_at
+      ORDER BY s.system_id ASC, a.date DESC
     `;
     
     const result = await pool.query(query);
@@ -826,11 +936,9 @@ app.get('/api/export-excel', async (req, res) => {
     // Transform data for Excel with serial number
     const excelData = result.rows.map((row, index) => ({
       'S.No': index + 1,
-      'Team ID': row.team_id || 'No Team',
-      'Team Name': row.team_name || 'No Team',
       'System ID': row.system_id,
       'Student Name': row.name,
-      'Date': row.date ? new Date(row.date + 'T00:00:00').toLocaleDateString('en-US') : 'No Record',
+      'Department': row.dept || 'Not Set',
       'Status': row.present === null ? 'No Record' : (row.present ? 'Present' : 'Absent'),
       'Recorded At': row.recorded_at ? new Date(row.recorded_at).toLocaleString('en-US') : 'N/A'
     }));
@@ -842,11 +950,9 @@ app.get('/api/export-excel', async (req, res) => {
     // Set column widths
     ws['!cols'] = [
       { wch: 8 },  // S.No
-      { wch: 12 }, // Team ID
-      { wch: 20 }, // Team Name
       { wch: 12 }, // System ID
       { wch: 25 }, // Student Name
-      { wch: 12 }, // Date
+      { wch: 30 }, // Department
       { wch: 10 }, // Status
       { wch: 22 }  // Recorded At
     ];
@@ -891,5 +997,4 @@ app.use((err, req, res, next) => {
 // Start server
 app.listen(port, () => {
   console.log(`Attendance tracker server running on port ${port}`);
-  console.log(`Access the app at: http://localhost:${port}`);
 });

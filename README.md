@@ -113,8 +113,7 @@ npm run client
 
 #### Production Mode
 ```bash
-# Build React for production
-npm run build
+# Database will be initialized automatically when you start the server
 
 # Set production environment (Windows)
 set NODE_ENV=production

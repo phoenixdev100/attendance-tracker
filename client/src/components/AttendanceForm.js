@@ -546,6 +546,9 @@ const AttendanceForm = () => {
               <h3>👤 {studentInfo.name}</h3>
               <div className="student-meta">
                 <span className="student-id-badge">{studentInfo.systemId}</span>
+                {studentInfo.dept && (
+                  <span className="dept-badge">{studentInfo.dept}</span>
+                )}
                 {studentInfo.team_names && (
                   <span className="team-badge">Teams: {studentInfo.team_names}</span>
                 )}
@@ -617,6 +620,9 @@ const AttendanceForm = () => {
                   <div className="member-info">
                     <div className="member-name">{member.name}</div>
                     <div className="member-id">{member.systemId}</div>
+                    {member.dept && (
+                      <div className="member-dept">{member.dept}</div>
+                    )}
                   </div>
                   <div className="member-status">
                     {selectedMembers.includes(member.systemId) ? (

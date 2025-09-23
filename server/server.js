@@ -936,6 +936,7 @@ app.get('/api/export-excel', async (req, res) => {
     // Transform data for Excel with serial number
     const excelData = result.rows.map((row, index) => ({
       'S.No': index + 1,
+      'Team IDs': row.team_ids || 'No Team',
       'System ID': row.system_id,
       'Student Name': row.name,
       'Department': row.dept || 'Not Set',
@@ -950,6 +951,7 @@ app.get('/api/export-excel', async (req, res) => {
     // Set column widths
     ws['!cols'] = [
       { wch: 8 },  // S.No
+      { wch: 15 }, // Team IDs
       { wch: 12 }, // System ID
       { wch: 25 }, // Student Name
       { wch: 30 }, // Department

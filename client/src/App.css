@@ -175,6 +175,15 @@
   font-weight: 500;
 }
 
+.dept-badge {
+  background: #17a2b8;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
 .attendance-status {
   display: flex;
   justify-content: center;
@@ -315,6 +324,13 @@
   font-size: 0.85rem;
   color: #666;
   font-family: 'Courier New', monospace;
+}
+
+.member-dept {
+  font-size: 0.8rem;
+  color: #17a2b8;
+  font-weight: 500;
+  margin-top: 2px;
 }
 
 .member-status {

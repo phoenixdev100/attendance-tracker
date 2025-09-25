@@ -19,7 +19,7 @@ app.use(helmet({
 
 // CORS configuration for React development
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
+  origin: process.env.NODE_ENV === 'production'
     ? false // In production, same origin
     : ['http://localhost:3001', 'http://localhost:3000'], // React dev server ports
   credentials: true
@@ -131,7 +131,7 @@ initializeDatabase();
 if (process.env.NODE_ENV === 'production') {
   // Serve React build files (client is now at ../client from server directory)
   app.use(express.static(path.join(__dirname, '../client/build')));
-  
+
   // Handle React routing - catch all non-API routes
   app.get('*', (req, res) => {
     // Don't serve React for API routes
@@ -143,8 +143,8 @@ if (process.env.NODE_ENV === 'production') {
 } else {
   // Development mode - just handle API routes
   app.get('/', (req, res) => {
-    res.json({ 
-      message: 'Attendance Tracker API Server', 
+    res.json({
+      message: 'Attendance Tracker API Server',
       mode: 'development',
       frontend: 'Run "npm run client" to start React development server on port 3001'
     });
@@ -156,12 +156,12 @@ app.post('/api/mark-present', async (req, res) => {
   const { systemId, teamId } = req.body;
 
   // Input validation - must have either systemId or teamId
-  if ((!systemId && !teamId) || 
-      (systemId && typeof systemId !== 'string') || 
-      (teamId && typeof teamId !== 'string')) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Either System ID or Team ID is required and must be a non-empty string' 
+  if ((!systemId && !teamId) ||
+    (systemId && typeof systemId !== 'string') ||
+    (teamId && typeof teamId !== 'string')) {
+    return res.status(400).json({
+      success: false,
+      message: 'Either System ID or Team ID is required and must be a non-empty string'
     });
   }
 
@@ -172,7 +172,7 @@ app.post('/api/mark-present', async (req, res) => {
   try {
     // Start a transaction
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
 
@@ -186,8 +186,8 @@ app.post('/api/mark-present', async (req, res) => {
 
         if (studentResult.rows.length === 0) {
           await client.query('ROLLBACK');
-          return res.status(404).json({ 
-            success: false, 
+          return res.status(404).json({
+            success: false,
             message: `Student with ID "${trimmedSystemId}" not found. Please verify the system ID and try again.`,
             invalidId: trimmedSystemId
           });
@@ -207,8 +207,8 @@ app.post('/api/mark-present', async (req, res) => {
 
         if (teamResult.rows.length === 0) {
           await client.query('ROLLBACK');
-          return res.status(404).json({ 
-            success: false, 
+          return res.status(404).json({
+            success: false,
             message: `Team with ID "${trimmedTeamId}" not found or has no students`,
             invalidId: trimmedTeamId
           });
@@ -261,7 +261,7 @@ app.post('/api/mark-present', async (req, res) => {
       // Prepare response message
       const totalProcessed = markedStudents.length + updatedStudents.length;
       const totalAlreadyPresent = alreadyPresentStudents.length;
-      
+
       let message;
       if (isTeamAttendance) {
         const teamName = studentsToMark[0].team_name;
@@ -282,8 +282,8 @@ app.post('/api/mark-present', async (req, res) => {
         }
       }
 
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         message: message,
         isTeamAttendance: isTeamAttendance,
         studentsMarked: [...markedStudents, ...updatedStudents],
@@ -301,9 +301,9 @@ app.post('/api/mark-present', async (req, res) => {
 
   } catch (error) {
     console.error('Error marking attendance:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Internal server error. Please try again later.' 
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
     });
   }
 });
@@ -355,9 +355,9 @@ app.get('/api/today-stats', async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching today\'s stats:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Internal server error. Please try again later.' 
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
     });
   }
 });
@@ -376,10 +376,10 @@ app.post('/api/upload-students', upload.single('excelFile'), async (req, res) =>
     const workbook = XLSX.readFile(req.file.path);
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
-    
+
     // Convert to JSON
     const data = XLSX.utils.sheet_to_json(worksheet);
-    
+
     if (data.length === 0) {
       return res.status(400).json({
         success: false,
@@ -391,7 +391,7 @@ app.post('/api/upload-students', upload.single('excelFile'), async (req, res) =>
     const requiredColumns = ['system_id', 'name'];
     const firstRow = data[0];
     const missingColumns = requiredColumns.filter(col => !(col in firstRow));
-    
+
     if (missingColumns.length > 0) {
       return res.status(400).json({
         success: false,
@@ -471,7 +471,7 @@ app.post('/api/upload-students', upload.single('excelFile'), async (req, res) =>
 
   } catch (error) {
     console.error('Error uploading Excel file:', error);
-    
+
     // Clean up uploaded file on error
     if (req.file) {
       const fs = require('fs');
@@ -500,9 +500,9 @@ app.get('/api/team/:teamId', async (req, res) => {
   const { teamId } = req.params;
 
   if (!teamId || typeof teamId !== 'string') {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Team ID is required' 
+    return res.status(400).json({
+      success: false,
+      message: 'Team ID is required'
     });
   }
 
@@ -527,13 +527,13 @@ app.get('/api/team/:teamId', async (req, res) => {
       WHERE UPPER(t.team_id) = $2
       ORDER BY s.system_id ASC
     `;
-    
+
     const result = await pool.query(query, [today, trimmedTeamId]);
-    
+
     if (result.rows.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: `Team with ID "${trimmedTeamId}" not found` 
+      return res.status(404).json({
+        success: false,
+        message: `Team with ID "${trimmedTeamId}" not found`
       });
     }
 
@@ -573,9 +573,9 @@ app.get('/api/team/:teamId', async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching team members:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Internal server error. Please try again later.' 
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
     });
   }
 });
@@ -585,9 +585,9 @@ app.get('/api/student/:systemId', async (req, res) => {
   const { systemId } = req.params;
 
   if (!systemId || typeof systemId !== 'string') {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'System ID is required' 
+    return res.status(400).json({
+      success: false,
+      message: 'System ID is required'
     });
   }
 
@@ -612,13 +612,13 @@ app.get('/api/student/:systemId', async (req, res) => {
       WHERE UPPER(s.system_id) = $2
       GROUP BY s.system_id, s.name, s.dept, a.present, a.recorded_at
     `;
-    
+
     const result = await pool.query(query, [today, trimmedSystemId]);
-    
+
     if (result.rows.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: `Student with ID "${systemId}" not found` 
+      return res.status(404).json({
+        success: false,
+        message: `Student with ID "${systemId}" not found`
       });
     }
 
@@ -639,9 +639,9 @@ app.get('/api/student/:systemId', async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching student details:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Internal server error. Please try again later.' 
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
     });
   }
 });
@@ -652,9 +652,9 @@ app.post('/api/mark-team-attendance', async (req, res) => {
 
   // Input validation
   if (!teamId || !Array.isArray(selectedStudents)) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Team ID and selected students array are required' 
+    return res.status(400).json({
+      success: false,
+      message: 'Team ID and selected students array are required'
     });
   }
 
@@ -663,7 +663,7 @@ app.post('/api/mark-team-attendance', async (req, res) => {
 
   try {
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
 
@@ -679,9 +679,9 @@ app.post('/api/mark-team-attendance', async (req, res) => {
 
       if (teamResult.rows.length === 0) {
         await client.query('ROLLBACK');
-        return res.status(404).json({ 
-          success: false, 
-          message: `Team with ID "${trimmedTeamId}" not found or has no students` 
+        return res.status(404).json({
+          success: false,
+          message: `Team with ID "${trimmedTeamId}" not found or has no students`
         });
       }
 
@@ -693,7 +693,7 @@ app.post('/api/mark-team-attendance', async (req, res) => {
       // Process each team member
       for (const member of allTeamMembers) {
         const isSelected = selectedStudents.includes(member.system_id);
-        
+
         try {
           // Check if attendance record exists for today
           const checkQuery = `
@@ -750,9 +750,9 @@ app.post('/api/mark-team-attendance', async (req, res) => {
 
   } catch (error) {
     console.error('Error marking team attendance:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Internal server error. Please try again later.' 
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
     });
   }
 });
@@ -762,12 +762,12 @@ app.post('/api/mark-absent', async (req, res) => {
   const { systemId, teamId } = req.body;
 
   // Input validation - must have either systemId or teamId
-  if ((!systemId && !teamId) || 
-      (systemId && typeof systemId !== 'string') || 
-      (teamId && typeof teamId !== 'string')) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Either System ID or Team ID is required and must be a non-empty string' 
+  if ((!systemId && !teamId) ||
+    (systemId && typeof systemId !== 'string') ||
+    (teamId && typeof teamId !== 'string')) {
+    return res.status(400).json({
+      success: false,
+      message: 'Either System ID or Team ID is required and must be a non-empty string'
     });
   }
 
@@ -777,7 +777,7 @@ app.post('/api/mark-absent', async (req, res) => {
 
   try {
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
 
@@ -788,11 +788,11 @@ app.post('/api/mark-absent', async (req, res) => {
         // Mark individual student absent
         const studentQuery = 'SELECT system_id, name, dept FROM students WHERE UPPER(system_id) = $1';
         const studentResult = await client.query(studentQuery, [trimmedSystemId]);
-        
+
         if (studentResult.rows.length === 0) {
           await client.query('ROLLBACK');
-          return res.status(404).json({ 
-            success: false, 
+          return res.status(404).json({
+            success: false,
             message: `Student with ID "${trimmedSystemId}" not found in the system`,
             invalidId: trimmedSystemId
           });
@@ -813,9 +813,9 @@ app.post('/api/mark-absent', async (req, res) => {
 
         if (teamResult.rows.length === 0) {
           await client.query('ROLLBACK');
-          return res.status(404).json({ 
-            success: false, 
-            message: `Team with ID "${trimmedTeamId}" not found or has no students` 
+          return res.status(404).json({
+            success: false,
+            message: `Team with ID "${trimmedTeamId}" not found or has no students`
           });
         }
 
@@ -902,9 +902,9 @@ app.post('/api/mark-absent', async (req, res) => {
 
   } catch (error) {
     console.error('Error marking student(s) absent:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Internal server error. Please try again later.' 
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
     });
   }
 });
@@ -930,9 +930,9 @@ app.get('/api/export-excel', async (req, res) => {
       GROUP BY s.system_id, s.name, s.dept, a.date, a.present, a.recorded_at
       ORDER BY s.system_id ASC, a.date DESC
     `;
-    
+
     const result = await pool.query(query);
-    
+
     // Transform data for Excel with serial number
     const excelData = result.rows.map((row, index) => ({
       'S.No': index + 1,
@@ -975,9 +975,9 @@ app.get('/api/export-excel', async (req, res) => {
 
   } catch (error) {
     console.error('Error exporting to Excel:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error generating Excel file. Please try again later.' 
+    res.status(500).json({
+      success: false,
+      message: 'Error generating Excel file. Please try again later.'
     });
   }
 });
@@ -990,9 +990,9 @@ app.use('/api/*', (req, res) => {
 // Global error handler
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
-  res.status(500).json({ 
-    success: false, 
-    message: 'Internal server error' 
+  res.status(500).json({
+    success: false,
+    message: 'Internal server error'
   });
 });
 

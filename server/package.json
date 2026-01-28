@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "import": "node import-excel-data.js"
+    "import": "node scripts/import-excel-data.js",
+    "seed": "node scripts/seed-database.js",
+    "db-test": "node scripts/test-db.js"
   },
   "keywords": [
     "attendance",
@@ -25,7 +27,8 @@
     "helmet": "^7.1.0",
     "cors": "^2.8.5",
     "express-rate-limit": "^7.1.5",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "bcryptjs": "^2.4.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.2",

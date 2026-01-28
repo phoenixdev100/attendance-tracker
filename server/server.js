@@ -74,6 +74,19 @@ const getTodayDate = () => {
 // Initialize database with teams and sample data
 const initializeDatabase = async () => {
   try {
+    // Create users table for authentication
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(50) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'user')),
+        name VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_login TIMESTAMP
+      )
+    `);
+
     // Create students table (without team_id - will use junction table)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS students (
@@ -117,7 +130,37 @@ const initializeDatabase = async () => {
       )
     `);
 
-    // Database tables created successfully - ready for your data upload
+    // Seed demo users if they don't exist
+    const bcrypt = require('bcryptjs');
+
+    // Check if users exist
+    const userCheck = await pool.query('SELECT COUNT(*) as count FROM users');
+
+    if (parseInt(userCheck.rows[0].count) === 0) {
+      console.log('Seeding demo users...');
+
+      // Hash passwords
+      const adminPassword = await bcrypt.hash('admin123', 10);
+      const userPassword = await bcrypt.hash('user123', 10);
+
+      // Insert admin user
+      await pool.query(`
+        INSERT INTO users (username, password, role, name) 
+        VALUES ($1, $2, $3, $4)
+      `, ['admin', adminPassword, 'admin', 'Administrator']);
+
+      // Insert regular user
+      await pool.query(`
+        INSERT INTO users (username, password, role, name) 
+        VALUES ($1, $2, $3, $4)
+      `, ['user', userPassword, 'user', 'Regular User']);
+
+      console.log('✅ Demo users created successfully!');
+      console.log('   Admin: username=admin, password=admin123');
+      console.log('   User: username=user, password=user123');
+    }
+
+    console.log('✅ Database initialized successfully');
 
   } catch (error) {
     console.error('Error initializing database:', error);
@@ -150,6 +193,77 @@ if (process.env.NODE_ENV === 'production') {
     });
   });
 }
+
+// API endpoint for login
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+
+  // Input validation
+  if (!username || !password) {
+    return res.status(400).json({
+      success: false,
+      message: 'Username and password are required'
+    });
+  }
+
+  try {
+    const bcrypt = require('bcryptjs');
+
+    // Query database for user
+    const userQuery = 'SELECT * FROM users WHERE username = $1';
+    const result = await pool.query(userQuery, [username.toLowerCase()]);
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid username or password'
+      });
+    }
+
+    const user = result.rows[0];
+
+    // Verify password using bcrypt
+    const passwordMatch = await bcrypt.compare(password, user.password);
+
+    if (!passwordMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid username or password'
+      });
+    }
+
+    // Update last login timestamp
+    await pool.query(
+      'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1',
+      [user.id]
+    );
+
+    // Generate token (in production, use proper JWT)
+    const token = `token-${user.id}-${Date.now()}`;
+
+    // Return user info (excluding password)
+    const userResponse = {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      name: user.name
+    };
+
+    res.json({
+      success: true,
+      message: 'Login successful',
+      user: userResponse,
+      token: token
+    });
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
+    });
+  }
+});
 
 // API endpoint to mark a student present
 app.post('/api/mark-present', async (req, res) => {

@@ -657,33 +657,26 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
         )}
 
         <div className="navigation-section">
-          {isUserDashboard && onLogout && (
-            <button
-              onClick={onLogout}
-              className="btn btn-warning"
-              style={{ minWidth: '200px' }}
-            >
-              🚪 Logout
-            </button>
-          )}
-
-          {!isUserDashboard && (
-            <>
-              <Link to="/stats" className="nav-link">
-                📊 View Today's Statistics
-              </Link>
-              <button
-                onClick={handleDownloadExcel}
-                className="btn btn-excel nav-button"
-                disabled={downloading || loading || absentLoading}
-              >
-                {downloading ? 'Downloading...' : '📋 Download Excel'}
-              </button>
-            </>
-          )}
+          <Link to="/stats" className="nav-link">
+            📊 View Today's Statistics
+          </Link>
+          <button 
+            onClick={handleDownloadExcel} 
+            className="btn btn-excel nav-button"
+            disabled={downloading || loading || absentLoading}
+          >
+            {downloading ? 'Downloading...' : '📋 Download Excel'}
+          </button>
         </div>
-
-
+        
+        <div className="footer">
+          <p className="footer-text">
+            Powered by <strong>Smart India Hackathon 2025</strong>
+          </p>
+          <p className="footer-subtext">
+            Building Digital India 🇮🇳
+          </p>
+        </div>
       </div>
     </div>
   );

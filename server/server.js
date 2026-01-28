@@ -1478,7 +1478,11 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
-app.listen(port, () => {
-  console.log(`Attendance tracker server running on port ${port}`);
-});
+// Start server if not running in serverless environment
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.listen(port, () => {
+    console.log(`Attendance tracker server running on port ${port}`);
+  });
+}
+
+module.exports = app;

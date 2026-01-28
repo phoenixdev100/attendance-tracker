@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import axios from 'axios';
+import api from '../config/api';
 import Alert from './Alert';
 
 const FileUpload = ({ onUploadSuccess }) => {
@@ -21,7 +21,7 @@ const FileUpload = ({ onUploadSuccess }) => {
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'application/vnd.ms-excel'
       ];
-      
+
       if (!validTypes.includes(selectedFile.type)) {
         showAlert(
           <span><span className="alert-icon">❌</span>Please select a valid Excel file (.xlsx or .xls)</span>,
@@ -29,7 +29,7 @@ const FileUpload = ({ onUploadSuccess }) => {
         );
         return;
       }
-      
+
       setFile(selectedFile);
       setUploadResult(null);
     }
@@ -49,7 +49,7 @@ const FileUpload = ({ onUploadSuccess }) => {
     formData.append('excelFile', file);
 
     try {
-      const response = await axios.post('/api/upload-students', formData, {
+      const response = await api.post('/api/upload-students', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
@@ -68,7 +68,7 @@ const FileUpload = ({ onUploadSuccess }) => {
         setFile(null);
         // Reset file input
         document.getElementById('fileInput').value = '';
-        
+
         // Call the callback function if provided
         if (onUploadSuccess) {
           onUploadSuccess();
@@ -76,7 +76,7 @@ const FileUpload = ({ onUploadSuccess }) => {
       }
     } catch (error) {
       console.error('Upload error:', error);
-      
+
       if (error.response && error.response.data) {
         showAlert(
           <span><span className="alert-icon">❌</span>{error.response.data.message}</span>,
@@ -157,7 +157,7 @@ const FileUpload = ({ onUploadSuccess }) => {
               </div>
             )}
           </div>
-          
+
           {uploadResult.errors && uploadResult.errors.length > 0 && (
             <div className="error-details">
               <h4>⚠️ Error Details:</h4>
@@ -176,10 +176,10 @@ const FileUpload = ({ onUploadSuccess }) => {
 
 
       {alert && (
-        <Alert 
-          message={alert.message} 
-          type={alert.type} 
-          onClose={() => setAlert(null)} 
+        <Alert
+          message={alert.message}
+          type={alert.type}
+          onClose={() => setAlert(null)}
         />
       )}
     </div>

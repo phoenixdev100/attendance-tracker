@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import api from '../config/api';
 import Alert from './Alert';
 
 const Login = ({ onLogin }) => {
@@ -25,17 +26,10 @@ const Login = ({ onLogin }) => {
         setLoading(true);
 
         try {
-            const response = await fetch('/api/login', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ username, password }),
-            });
+            const response = await api.post('/api/login', { username, password });
+            const data = response.data;
 
-            const data = await response.json();
-
-            if (response.ok && data.success) {
+            if (data.success) {
                 // Store user info in localStorage
                 localStorage.setItem('user', JSON.stringify(data.user));
                 localStorage.setItem('token', data.token);
@@ -47,7 +41,7 @@ const Login = ({ onLogin }) => {
                 if (data.user.role === 'admin') {
                     navigate('/admin');
                 } else {
-                    navigate('/');
+                    navigate('/attendance');
                 }
 
                 showAlert('Login successful!', 'success');
@@ -56,7 +50,8 @@ const Login = ({ onLogin }) => {
             }
         } catch (error) {
             console.error('Login error:', error);
-            showAlert('Network error. Please try again.', 'error');
+            const message = error.response?.data?.message || 'Network error. Please try again.';
+            showAlert(message, 'error');
         } finally {
             setLoading(false);
         }
@@ -122,16 +117,6 @@ const Login = ({ onLogin }) => {
                         onClose={() => setAlert(null)}
                     />
                 )}
-
-                <div className="login-info" style={{ marginTop: '20px', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
-                    <p style={{ margin: '0 0 10px 0', fontWeight: '600', color: '#333' }}>Demo Credentials:</p>
-                    <p style={{ margin: '5px 0', fontSize: '0.9rem', color: '#666' }}>
-                        <strong>Admin:</strong> admin / admin123
-                    </p>
-                    <p style={{ margin: '5px 0', fontSize: '0.9rem', color: '#666' }}>
-                        <strong>User:</strong> user / user123
-                    </p>
-                </div>
             </div>
         </div>
     );

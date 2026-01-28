@@ -20,31 +20,11 @@ app.use(helmet({
 // CORS configuration for React development
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production'
-    ? false // In production, same origin
-    : ['http://localhost:3001', 'http://localhost:3000'], // React dev server ports
+    ? process.env.CORS_ORIGIN || false // In production, use env var or same origin
+    : [process.env.CORS_ORIGIN || 'http://localhost:3001', 'http://localhost:3000'], // React dev server ports
   credentials: true
 };
 app.use(cors(corsOptions));
-
-// Configure trust proxy for rate limiting
-app.set('trust proxy', 1);
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  // Skip rate limiting for localhost in development
-  skip: (req) => {
-    if (process.env.NODE_ENV !== 'production') {
-      return req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';
-    }
-    return false;
-  }
-});
-app.use('/api/', limiter);
 
 // Body parsing middleware
 app.use(express.json());
@@ -130,6 +110,29 @@ const initializeDatabase = async () => {
       )
     `);
 
+    // Create settings table for feature toggles
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        id SERIAL PRIMARY KEY,
+        setting_key VARCHAR(100) UNIQUE NOT NULL,
+        setting_value TEXT NOT NULL,
+        description TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Seed default settings if they don't exist
+    const settingsCheck = await pool.query('SELECT COUNT(*) as count FROM settings WHERE setting_key = $1', ['team_feature_enabled']);
+
+    if (parseInt(settingsCheck.rows[0].count) === 0) {
+      await pool.query(`
+        INSERT INTO settings (setting_key, setting_value, description) 
+        VALUES ($1, $2, $3)
+      `, ['team_feature_enabled', 'true', 'Enable/disable team attendance feature for regular users']);
+
+      console.log('✅ Default settings initialized');
+    }
+
     // Seed demo users if they don't exist
     const bcrypt = require('bcryptjs');
 
@@ -187,12 +190,20 @@ if (process.env.NODE_ENV === 'production') {
   // Development mode - just handle API routes
   app.get('/', (req, res) => {
     res.json({
-      message: 'Attendance Tracker API Server',
-      mode: 'development',
-      frontend: 'Run "npm run client" to start React development server on port 3001'
+      message: 'Welcome to Attendance Tracker API Server',
+      status: 'success',
+      timestamp: new Date().toISOString(),
     });
   });
 }
+
+app.get('/health', (req, res) => {
+  res.json({
+    message: 'Server is healthy',
+    status: 'success',
+    timestamp: new Date().toISOString(),
+  });
+});
 
 // API endpoint for login
 app.post('/api/login', async (req, res) => {
@@ -264,6 +275,364 @@ app.post('/api/login', async (req, res) => {
     });
   }
 });
+
+// ==================== USER MANAGEMENT API ENDPOINTS ====================
+
+// GET all users (admin only)
+app.get('/api/users', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, username, role, name, created_at, last_login FROM users ORDER BY created_at DESC'
+    );
+
+    res.json({
+      success: true,
+      users: result.rows
+    });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
+    });
+  }
+});
+
+// GET single user by ID (admin only)
+app.get('/api/users/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      'SELECT id, username, role, name, created_at, last_login FROM users WHERE id = $1',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      user: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
+    });
+  }
+});
+
+// POST create new user (admin only)
+app.post('/api/users', async (req, res) => {
+  const { username, password, role, name } = req.body;
+
+  // Validation
+  if (!username || !password || !role || !name) {
+    return res.status(400).json({
+      success: false,
+      message: 'All fields are required: username, password, role, name'
+    });
+  }
+
+  if (!['admin', 'user'].includes(role)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Role must be either "admin" or "user"'
+    });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({
+      success: false,
+      message: 'Password must be at least 6 characters long'
+    });
+  }
+
+  try {
+    const bcrypt = require('bcryptjs');
+
+    // Check if username already exists
+    const existingUser = await pool.query(
+      'SELECT id FROM users WHERE username = $1',
+      [username.toLowerCase()]
+    );
+
+    if (existingUser.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'Username already exists'
+      });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Insert new user
+    const result = await pool.query(
+      'INSERT INTO users (username, password, role, name) VALUES ($1, $2, $3, $4) RETURNING id, username, role, name, created_at',
+      [username.toLowerCase(), hashedPassword, role, name]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully',
+      user: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
+    });
+  }
+});
+
+// PUT update user (admin only)
+app.put('/api/users/:id', async (req, res) => {
+  const { id } = req.params;
+  const { username, password, role, name } = req.body;
+
+  // Validation
+  if (!username || !role || !name) {
+    return res.status(400).json({
+      success: false,
+      message: 'Username, role, and name are required'
+    });
+  }
+
+  if (!['admin', 'user'].includes(role)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Role must be either "admin" or "user"'
+    });
+  }
+
+  if (password && password.length < 6) {
+    return res.status(400).json({
+      success: false,
+      message: 'Password must be at least 6 characters long'
+    });
+  }
+
+  try {
+    const bcrypt = require('bcryptjs');
+
+    // Check if user exists
+    const existingUser = await pool.query('SELECT id FROM users WHERE id = $1', [id]);
+
+    if (existingUser.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if new username conflicts with another user
+    const usernameCheck = await pool.query(
+      'SELECT id FROM users WHERE username = $1 AND id != $2',
+      [username.toLowerCase(), id]
+    );
+
+    if (usernameCheck.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: 'Username already exists'
+      });
+    }
+
+    // Update user
+    let query, params;
+
+    if (password) {
+      // Update with new password
+      const hashedPassword = await bcrypt.hash(password, 10);
+      query = 'UPDATE users SET username = $1, password = $2, role = $3, name = $4 WHERE id = $5 RETURNING id, username, role, name, created_at, last_login';
+      params = [username.toLowerCase(), hashedPassword, role, name, id];
+    } else {
+      // Update without changing password
+      query = 'UPDATE users SET username = $1, role = $2, name = $3 WHERE id = $4 RETURNING id, username, role, name, created_at, last_login';
+      params = [username.toLowerCase(), role, name, id];
+    }
+
+    const result = await pool.query(query, params);
+
+    res.json({
+      success: true,
+      message: 'User updated successfully',
+      user: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
+    });
+  }
+});
+
+// DELETE user (admin only)
+app.delete('/api/users/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Check if user exists
+    const existingUser = await pool.query('SELECT id, username FROM users WHERE id = $1', [id]);
+
+    if (existingUser.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Prevent deleting the last admin
+    const adminCount = await pool.query('SELECT COUNT(*) as count FROM users WHERE role = $1', ['admin']);
+    const user = existingUser.rows[0];
+
+    if (user.role === 'admin' && parseInt(adminCount.rows[0].count) <= 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete the last admin user'
+      });
+    }
+
+    // Delete user
+    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+
+    res.json({
+      success: true,
+      message: 'User deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
+    });
+  }
+});
+
+// ==================== SETTINGS API ENDPOINTS ====================
+
+// GET settings (all users can read)
+app.get('/api/settings', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM settings ORDER BY setting_key');
+
+    // Convert to key-value object for easier frontend use
+    const settings = {};
+    result.rows.forEach(row => {
+      settings[row.setting_key] = {
+        value: row.setting_value === 'true' ? true : row.setting_value === 'false' ? false : row.setting_value,
+        description: row.description,
+        updated_at: row.updated_at
+      };
+    });
+
+    res.json({
+      success: true,
+      settings: settings
+    });
+  } catch (error) {
+    console.error('Error fetching settings:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
+    });
+  }
+});
+
+// GET single setting by key
+app.get('/api/settings/:key', async (req, res) => {
+  const { key } = req.params;
+
+  try {
+    const result = await pool.query('SELECT * FROM settings WHERE setting_key = $1', [key]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Setting not found'
+      });
+    }
+
+    const setting = result.rows[0];
+    res.json({
+      success: true,
+      setting: {
+        key: setting.setting_key,
+        value: setting.setting_value === 'true' ? true : setting.setting_value === 'false' ? false : setting.setting_value,
+        description: setting.description,
+        updated_at: setting.updated_at
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching setting:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
+    });
+  }
+});
+
+// PUT update setting (admin only)
+app.put('/api/settings/:key', async (req, res) => {
+  const { key } = req.params;
+  const { value } = req.body;
+
+  if (value === undefined || value === null) {
+    return res.status(400).json({
+      success: false,
+      message: 'Setting value is required'
+    });
+  }
+
+  try {
+    // Convert boolean to string for storage
+    const stringValue = typeof value === 'boolean' ? value.toString() : value;
+
+    const result = await pool.query(
+      'UPDATE settings SET setting_value = $1, updated_at = CURRENT_TIMESTAMP WHERE setting_key = $2 RETURNING *',
+      [stringValue, key]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Setting not found'
+      });
+    }
+
+    const setting = result.rows[0];
+    res.json({
+      success: true,
+      message: 'Setting updated successfully',
+      setting: {
+        key: setting.setting_key,
+        value: setting.setting_value === 'true' ? true : setting.setting_value === 'false' ? false : setting.setting_value,
+        description: setting.description,
+        updated_at: setting.updated_at
+      }
+    });
+  } catch (error) {
+    console.error('Error updating setting:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
+    });
+  }
+});
+
+// ==================== END SETTINGS ====================
+
+
+// ==================== END USER MANAGEMENT ====================
 
 // API endpoint to mark a student present
 app.post('/api/mark-present', async (req, res) => {

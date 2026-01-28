@@ -1479,7 +1479,9 @@ app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({
     success: false,
-    message: 'Internal server error'
+    message: 'Internal server error',
+    error: err.message, // Temporary: expose error for debugging
+    stack: process.env.NODE_ENV === 'production' ? '🥞' : err.stack
   });
 });
 

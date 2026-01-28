@@ -178,7 +178,9 @@ const initializeDatabase = async () => {
 initializeDatabase();
 
 // Handle React routing - serve React app for non-API routes
-if (process.env.NODE_ENV === 'production') {
+// Handle React routing - serve React app for non-API routes
+// SKIP this on Vercel serverless environment as frontend is deployed separately
+if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
   // Serve React build files (client is now at ../client from server directory)
   app.use(express.static(path.join(__dirname, '../client/build')));
 
@@ -191,12 +193,12 @@ if (process.env.NODE_ENV === 'production') {
     res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
   });
 } else {
-  // Development mode - just handle API routes
+  // Development mode or Vercel - just handle API routes and root
   app.get('/', (req, res) => {
     res.json({
-      message: 'Welcome to Attendance Tracker API Server',
-      status: 'success',
-      timestamp: new Date().toISOString(),
+      message: 'Attendance Tracker API is running',
+      environment: process.env.NODE_ENV,
+      platform: process.env.VERCEL ? 'Vercel' : 'Self-hosted'
     });
   });
 }

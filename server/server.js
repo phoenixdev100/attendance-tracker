@@ -4,7 +4,6 @@ const path = require('path');
 require('dotenv').config();
 const helmet = require('helmet');
 const cors = require('cors');
-const rateLimit = require('express-rate-limit');
 const XLSX = require('xlsx');
 const multer = require('multer');
 const upload = multer({ dest: path.join(__dirname, 'uploads/') });
@@ -130,7 +129,7 @@ const initializeDatabase = async () => {
         VALUES ($1, $2, $3)
       `, ['team_feature_enabled', 'true', 'Enable/disable team attendance feature for regular users']);
 
-      console.log('✅ Default settings initialized');
+      // console.log('✅ Default settings initialized');
     }
 
     // Seed demo users if they don't exist
@@ -140,7 +139,7 @@ const initializeDatabase = async () => {
     const userCheck = await pool.query('SELECT COUNT(*) as count FROM users');
 
     if (parseInt(userCheck.rows[0].count) === 0) {
-      console.log('Seeding demo users...');
+      // console.log('Seeding demo users...');
 
       // Hash passwords
       const adminPassword = await bcrypt.hash('admin123', 10);
@@ -158,9 +157,9 @@ const initializeDatabase = async () => {
         VALUES ($1, $2, $3, $4)
       `, ['user', userPassword, 'user', 'Regular User']);
 
-      console.log('✅ Demo users created successfully!');
-      console.log('   Admin: username=admin, password=admin123');
-      console.log('   User: username=user, password=user123');
+      // console.log('✅ Demo users created successfully!');
+      // console.log('   Admin: username=admin, password=admin123');
+      // console.log('   User: username=user, password=user123');
     }
 
     console.log('✅ Database initialized successfully');

@@ -6,7 +6,12 @@ const helmet = require('helmet');
 const cors = require('cors');
 const XLSX = require('xlsx');
 const multer = require('multer');
-const upload = multer({ dest: path.join(__dirname, 'uploads/') });
+const os = require('os');
+const upload = multer({
+  dest: process.env.VERCEL || process.env.NODE_ENV === 'production'
+    ? os.tmpdir()
+    : path.join(__dirname, 'uploads/')
+});
 
 const app = express();
 const port = process.env.PORT || 3000;

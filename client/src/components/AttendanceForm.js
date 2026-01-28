@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../config/api';
 import Alert from './Alert';
@@ -176,7 +176,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
     };
 
     loadSettings();
-  }, [user]);
+  }, [user, inputType]);
 
 
   // Auto-fetch team details when team ID changes

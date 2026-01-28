@@ -1721,3 +1721,94 @@
 }
 
 /* ==================== END SETTINGS MANAGEMENT STYLES ==================== */
+
+/* ==================== PWA INSTALL PROMPT ==================== */
+.install-prompt-container {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 9999;
+  padding: 15px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none; /* Let clicks pass through outside the prompt */
+}
+
+.install-prompt {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  pointer-events: auto;
+  max-width: 400px;
+  width: 100%;
+  border: 1px solid #eee;
+  animation: slideUp 0.5s ease-out;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.install-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.install-icon {
+  font-size: 24px;
+}
+
+.install-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.install-text strong {
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.install-text span {
+  color: #666;
+  font-size: 0.8rem;
+}
+
+.btn-install {
+  background: #4a90e2;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.btn-install:hover {
+  background: #357abd;
+}
+
+.btn-close-prompt {
+  background: transparent;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 5px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+
+.btn-close-prompt:hover {
+  color: #333;
+}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../config/api';
 import Alert from './Alert';
 
 const StatsPage = () => {
@@ -25,7 +25,7 @@ const StatsPage = () => {
       setLoading(true);
       setError(null);
 
-      const response = await axios.get('/api/today-stats');
+      const response = await api.get('/api/today-stats');
       setStats(response.data);
       setLastUpdated(new Date().toLocaleTimeString());
 
@@ -72,7 +72,7 @@ const StatsPage = () => {
     }
 
     try {
-      const response = await axios.post('/api/mark-absent', { systemId });
+      const response = await api.post('/api/mark-absent', { systemId });
 
       if (response.data.success) {
         // Refresh stats to update the list
@@ -94,7 +94,7 @@ const StatsPage = () => {
     setDownloading(true);
 
     try {
-      const response = await axios.get('/api/export-excel', {
+      const response = await api.get('/api/export-excel', {
         responseType: 'blob' // Important for file downloads
       });
 

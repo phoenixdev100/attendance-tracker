@@ -17,6 +17,8 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
   const [showTeamSelection, setShowTeamSelection] = useState(false);
   const [studentInfo, setStudentInfo] = useState(null);
   const [showStudentDetails, setShowStudentDetails] = useState(false);
+  const [teamFeatureEnabled, setTeamFeatureEnabled] = useState(true); // Default to true for admins
+
 
   const showAlert = (message, type, duration = null) => {
     setAlert({ message, type });
@@ -145,6 +147,37 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
     const input = document.getElementById('systemId');
     if (input) input.focus();
   }, []);
+
+  // Load settings to check if team feature is enabled
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        // Admins always have access to team feature
+        if (user?.role === 'admin') {
+          setTeamFeatureEnabled(true);
+          return;
+        }
+
+        // For regular users, check the setting
+        const response = await api.get('/api/settings/team_feature_enabled');
+        if (response.data.success) {
+          setTeamFeatureEnabled(response.data.setting.value);
+          // If team feature is disabled, switch to system mode
+          if (!response.data.setting.value && inputType === 'team') {
+            setInputType('system');
+          }
+        }
+      } catch (error) {
+        console.error('Error loading settings:', error);
+        // Default to false for users if error
+        setTeamFeatureEnabled(false);
+        setInputType('system');
+      }
+    };
+
+    loadSettings();
+  }, [user]);
+
 
   // Auto-fetch team details when team ID changes
   useEffect(() => {
@@ -449,22 +482,25 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <div className="input-type-toggle">
-              <button
-                type="button"
-                className={`toggle-btn ${inputType === 'system' ? 'active' : ''}`}
-                onClick={() => setInputType('system')}
-              >
-                👤 Individual Student
-              </button>
-              <button
-                type="button"
-                className={`toggle-btn ${inputType === 'team' ? 'active' : ''}`}
-                onClick={() => setInputType('team')}
-              >
-                👥 Entire Team
-              </button>
-            </div>
+            {/* Only show toggle if team feature is enabled */}
+            {teamFeatureEnabled && (
+              <div className="input-type-toggle">
+                <button
+                  type="button"
+                  className={`toggle-btn ${inputType === 'system' ? 'active' : ''}`}
+                  onClick={() => setInputType('system')}
+                >
+                  👤 Individual Student
+                </button>
+                <button
+                  type="button"
+                  className={`toggle-btn ${inputType === 'team' ? 'active' : ''}`}
+                  onClick={() => setInputType('team')}
+                >
+                  👥 Entire Team
+                </button>
+              </div>
+            )}
 
             <label htmlFor={inputType === 'system' ? 'systemId' : 'teamId'} className="form-label">
               {inputType === 'system' ? 'Student System ID:' : 'Team ID:'}
@@ -657,26 +693,49 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
         )}
 
         <div className="navigation-section">
-          <Link to="/stats" className="nav-link">
-            📊 View Today's Statistics
-          </Link>
-          <button 
-            onClick={handleDownloadExcel} 
-            className="btn btn-excel nav-button"
-            disabled={downloading || loading || absentLoading}
-          >
-            {downloading ? 'Downloading...' : '📋 Download Excel'}
-          </button>
+          {/* User dashboard - only logout */}
+          {isUserDashboard && onLogout && (
+            <button
+              onClick={onLogout}
+              className="btn btn-warning"
+              style={{ minWidth: '200px' }}
+            >
+              🚪 Logout
+            </button>
+          )}
+
+          {/* Admin navigation from /attendance route */}
+          {showAdminNav && (
+            <>
+              <Link to="/admin" className="nav-link">
+                ← Back to Dashboard
+              </Link>
+              <button
+                onClick={onLogout}
+                className="btn btn-warning"
+              >
+                🚪 Logout
+              </button>
+            </>
+          )}
+
+          {/* Default navigation (when not user dashboard or admin nav) */}
+          {!isUserDashboard && !showAdminNav && (
+            <>
+              <Link to="/stats" className="nav-link">
+                📊 View Today's Statistics
+              </Link>
+              <button
+                onClick={handleDownloadExcel}
+                className="btn btn-excel nav-button"
+                disabled={downloading || loading || absentLoading}
+              >
+                {downloading ? 'Downloading...' : '📋 Download Excel'}
+              </button>
+            </>
+          )}
         </div>
-        
-        <div className="footer">
-          <p className="footer-text">
-            Powered by <strong>Smart India Hackathon 2025</strong>
-          </p>
-          <p className="footer-subtext">
-            Building Digital India 🇮🇳
-          </p>
-        </div>
+
       </div>
     </div>
   );

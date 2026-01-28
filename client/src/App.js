@@ -5,6 +5,8 @@ import AdminDashboard from './components/AdminDashboard';
 import UserDashboard from './components/UserDashboard';
 import AttendanceForm from './components/AttendanceForm';
 import StatsPage from './components/StatsPage';
+import UserManagement from './components/UserManagement';
+import SettingsManagement from './components/SettingsManagement';
 import './App.css';
 
 function App() {
@@ -74,8 +76,12 @@ function App() {
           <Route
             path="/attendance"
             element={
-              user && user.role === 'admin' ? (
-                <AttendanceForm user={user} onLogout={handleLogout} showAdminNav={true} />
+              user ? (
+                user.role === 'admin' ? (
+                  <AttendanceForm user={user} onLogout={handleLogout} showAdminNav={true} />
+                ) : (
+                  <AttendanceForm user={user} onLogout={handleLogout} isUserDashboard={true} />
+                )
               ) : (
                 <Navigate to="/login" replace />
               )
@@ -87,6 +93,36 @@ function App() {
             element={
               user && user.role === 'admin' ? (
                 <StatsPage />
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+
+          <Route
+            path="/settings"
+            element={
+              user && user.role === 'admin' ? (
+                <div className="container">
+                  <div className="card" style={{ maxWidth: '900px' }}>
+                    <SettingsManagement />
+                  </div>
+                </div>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+
+          <Route
+            path="/users"
+            element={
+              user && user.role === 'admin' ? (
+                <div className="container">
+                  <div className="card" style={{ maxWidth: '1200px' }}>
+                    <UserManagement />
+                  </div>
+                </div>
               ) : (
                 <Navigate to="/login" replace />
               )

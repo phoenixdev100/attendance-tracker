@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../config/api';
 import Alert from './Alert';
 
-const AttendanceForm = () => {
+const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav = false }) => {
   const [systemId, setSystemId] = useState('');
   const [teamId, setTeamId] = useState('');
   const [inputType, setInputType] = useState('system'); // 'system' or 'team'
@@ -18,47 +18,9 @@ const AttendanceForm = () => {
   const [studentInfo, setStudentInfo] = useState(null);
   const [showStudentDetails, setShowStudentDetails] = useState(false);
 
-  useEffect(() => {
-    // Focus on input when component mounts
-    const input = document.getElementById('systemId');
-    if (input) input.focus();
-  }, []);
-
-  // Auto-fetch team details when team ID changes
-  useEffect(() => {
-    if (inputType === 'team' && teamId.trim() && teamId.trim().length >= 4) {
-      const timeoutId = setTimeout(() => {
-        handleTeamLookup();
-      }, 800); // 800ms debounce
-
-      return () => clearTimeout(timeoutId);
-    } else {
-      // Clear team selection if input is too short or switched to individual mode
-      setShowTeamSelection(false);
-      setTeamMembers([]);
-      setTeamInfo(null);
-      setSelectedMembers([]);
-    }
-  }, [teamId, inputType]);
-
-  // Auto-fetch student details when system ID changes
-  useEffect(() => {
-    if (inputType === 'system' && systemId.trim() && systemId.trim().length >= 4) {
-      const timeoutId = setTimeout(() => {
-        handleStudentLookup();
-      }, 800); // 800ms debounce
-
-      return () => clearTimeout(timeoutId);
-    } else {
-      // Clear student details if input is too short or switched to team mode
-      setShowStudentDetails(false);
-      setStudentInfo(null);
-    }
-  }, [systemId, inputType]);
-
   const showAlert = (message, type, duration = null) => {
     setAlert({ message, type });
-    
+
     // Auto-hide certain alert types
     if (duration || type === 'success' || type === 'info') {
       setTimeout(() => {
@@ -85,11 +47,142 @@ const AttendanceForm = () => {
     });
   };
 
+  // Define handleTeamLookup before it's used in useEffect
+  const handleTeamLookup = useCallback(async () => {
+    if (!teamId.trim()) {
+      return;
+    }
+
+    setLoading(true);
+    hideAlert();
+
+    try {
+      const response = await api.get(`/api/team/${teamId.trim()}`);
+
+      if (response.data.success) {
+        setTeamInfo(response.data.team);
+        setTeamMembers(response.data.members);
+        setSelectedMembers(response.data.members.filter(m => m.isPresentToday).map(m => m.systemId));
+        setShowTeamSelection(true);
+
+        showAlert(
+          <span><span className="alert-icon">👥</span>Team loaded: {response.data.team.team_name} ({response.data.totalMembers} members)</span>,
+          'success'
+        );
+      }
+    } catch (error) {
+      console.error('Error fetching team:', error);
+
+      // Only show error alerts for user-initiated actions, not auto-lookup
+      if (error.response && error.response.data) {
+        showAlert(
+          <span><span className="alert-icon">❌</span>{error.response.data.message}</span>,
+          'error'
+        );
+      } else {
+        showAlert(
+          <span><span className="alert-icon">🌐</span>Network error. Please check your connection.</span>,
+          'error'
+        );
+      }
+
+      // Clear team selection on error
+      setShowTeamSelection(false);
+      setTeamMembers([]);
+      setTeamInfo(null);
+      setSelectedMembers([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [teamId]);
+
+  // Define handleStudentLookup before it's used in useEffect
+  const handleStudentLookup = useCallback(async () => {
+    if (!systemId.trim()) {
+      return;
+    }
+
+    setLoading(true);
+    hideAlert();
+
+    try {
+      const response = await api.get(`/api/student/${systemId.trim()}`);
+
+      if (response.data.success) {
+        setStudentInfo(response.data.student);
+        setShowStudentDetails(true);
+
+        showAlert(
+          <span><span className="alert-icon">👤</span>Student found: {response.data.student.name}{response.data.student.team_names ? ` (${response.data.student.team_names})` : ''}</span>,
+          'success'
+        );
+      }
+    } catch (error) {
+      console.error('Error fetching student:', error);
+
+      if (error.response && error.response.data) {
+        showAlert(
+          <span><span className="alert-icon">❌</span>{error.response.data.message}</span>,
+          'error'
+        );
+      } else {
+        showAlert(
+          <span><span className="alert-icon">🌐</span>Network error. Please check your connection.</span>,
+          'error'
+        );
+      }
+
+      // Clear student details on error
+      setShowStudentDetails(false);
+      setStudentInfo(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [systemId]);
+
+  useEffect(() => {
+    // Focus on input when component mounts
+    const input = document.getElementById('systemId');
+    if (input) input.focus();
+  }, []);
+
+  // Auto-fetch team details when team ID changes
+  useEffect(() => {
+    if (inputType === 'team' && teamId.trim() && teamId.trim().length >= 4) {
+      const timeoutId = setTimeout(() => {
+        handleTeamLookup();
+      }, 800); // 800ms debounce
+
+      return () => clearTimeout(timeoutId);
+    } else {
+      // Clear team selection if input is too short or switched to individual mode
+      setShowTeamSelection(false);
+      setTeamMembers([]);
+      setTeamInfo(null);
+      setSelectedMembers([]);
+    }
+  }, [teamId, inputType, handleTeamLookup]);
+
+  // Auto-fetch student details when system ID changes
+  useEffect(() => {
+    if (inputType === 'system' && systemId.trim() && systemId.trim().length >= 4) {
+      const timeoutId = setTimeout(() => {
+        handleStudentLookup();
+      }, 800); // 800ms debounce
+
+      return () => clearTimeout(timeoutId);
+    } else {
+      // Clear student details if input is too short or switched to team mode
+      setShowStudentDetails(false);
+      setStudentInfo(null);
+    }
+  }, [systemId, inputType, handleStudentLookup]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     const currentId = inputType === 'system' ? systemId.trim() : teamId.trim();
-    
+
     if (!currentId) {
       showAlert(
         <span><span className="alert-icon">📝</span>Please enter a {inputType === 'system' ? 'student system ID' : 'team ID'}</span>,
@@ -102,10 +195,10 @@ const AttendanceForm = () => {
     hideAlert();
 
     try {
-      const requestData = inputType === 'system' 
+      const requestData = inputType === 'system'
         ? { systemId: currentId }
         : { teamId: currentId };
-        
+
       const response = await api.post('/api/mark-present', requestData);
 
       if (response.data.success) {
@@ -123,10 +216,10 @@ const AttendanceForm = () => {
             )}
           </div>
         );
-        
+
         showAlert(successMessage, 'success');
         setSystemId(''); // Clear input on success
-        
+
         // Focus back on input
         setTimeout(() => {
           const input = document.getElementById('systemId');
@@ -136,12 +229,12 @@ const AttendanceForm = () => {
 
     } catch (error) {
       console.error('Error:', error);
-      
+
       if (error.response && error.response.data) {
         const data = error.response.data;
         let errorType = 'error';
         let icon = '❌';
-        
+
         if (error.response.status === 404) {
           icon = '🔍';
           errorType = 'warning';
@@ -152,7 +245,7 @@ const AttendanceForm = () => {
           icon = '📝';
           errorType = 'info';
         }
-        
+
         showAlert(
           <span><span className="alert-icon">{icon}</span>{data.message}</span>,
           errorType
@@ -171,7 +264,7 @@ const AttendanceForm = () => {
 
   const handleMarkAbsent = async () => {
     const trimmedId = systemId.trim();
-    
+
     if (!trimmedId) {
       showAlert(
         <span><span className="alert-icon">📝</span>Please enter a student system ID to mark as absent</span>,
@@ -203,10 +296,10 @@ const AttendanceForm = () => {
             )}
           </div>
         );
-        
+
         showAlert(successMessage, 'warning');
         setSystemId(''); // Clear input on success
-        
+
         // Focus back on input
         setTimeout(() => {
           const input = document.getElementById('systemId');
@@ -216,12 +309,12 @@ const AttendanceForm = () => {
 
     } catch (error) {
       console.error('Error:', error);
-      
+
       if (error.response && error.response.data) {
         const data = error.response.data;
         let errorType = 'error';
         let icon = '❌';
-        
+
         if (error.response.status === 404) {
           icon = '🔍';
           errorType = 'warning';
@@ -232,7 +325,7 @@ const AttendanceForm = () => {
           icon = '📝';
           errorType = 'info';
         }
-        
+
         showAlert(
           <span><span className="alert-icon">{icon}</span>{data.message}</span>,
           errorType
@@ -250,7 +343,7 @@ const AttendanceForm = () => {
 
   const handleDownloadExcel = async () => {
     setDownloading(true);
-    
+
     try {
       const response = await api.get(`/api/export-excel`, {
         responseType: 'blob'
@@ -259,21 +352,21 @@ const AttendanceForm = () => {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      
+
       const today = new Date().toISOString().split('T')[0];
       link.setAttribute('download', `attendance_records_${today}.xlsx`);
-      
+
       document.body.appendChild(link);
       link.click();
       link.remove();
-      
+
       window.URL.revokeObjectURL(url);
-      
+
       showAlert(
         <span><span className="alert-icon">📊</span>Excel file downloaded successfully!</span>,
         'success'
       );
-      
+
     } catch (error) {
       console.error('Error downloading Excel file:', error);
       showAlert(
@@ -285,100 +378,9 @@ const AttendanceForm = () => {
     }
   };
 
-  const handleTeamLookup = async () => {
-    if (!teamId.trim()) {
-      return;
-    }
-
-    setLoading(true);
-    hideAlert();
-
-    try {
-      const response = await api.get(`/api/team/${teamId.trim()}`);
-      
-      if (response.data.success) {
-        setTeamInfo(response.data.team);
-        setTeamMembers(response.data.members);
-        setSelectedMembers(response.data.members.filter(m => m.isPresentToday).map(m => m.systemId));
-        setShowTeamSelection(true);
-        
-        showAlert(
-          <span><span className="alert-icon">👥</span>Team loaded: {response.data.team.team_name} ({response.data.totalMembers} members)</span>,
-          'success'
-        );
-      }
-    } catch (error) {
-      console.error('Error fetching team:', error);
-      
-      // Only show error alerts for user-initiated actions, not auto-lookup
-      if (error.response && error.response.data) {
-        showAlert(
-          <span><span className="alert-icon">❌</span>{error.response.data.message}</span>,
-          'error'
-        );
-      } else {
-        showAlert(
-          <span><span className="alert-icon">🌐</span>Network error. Please check your connection.</span>,
-          'error'
-        );
-      }
-      
-      // Clear team selection on error
-      setShowTeamSelection(false);
-      setTeamMembers([]);
-      setTeamInfo(null);
-      setSelectedMembers([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleStudentLookup = async () => {
-    if (!systemId.trim()) {
-      return;
-    }
-
-    setLoading(true);
-    hideAlert();
-
-    try {
-      const response = await api.get(`/api/student/${systemId.trim()}`);
-      
-      if (response.data.success) {
-        setStudentInfo(response.data.student);
-        setShowStudentDetails(true);
-        
-        showAlert(
-          <span><span className="alert-icon">👤</span>Student found: {response.data.student.name}{response.data.student.team_names ? ` (${response.data.student.team_names})` : ''}</span>,
-          'success'
-        );
-      }
-    } catch (error) {
-      console.error('Error fetching student:', error);
-      
-      if (error.response && error.response.data) {
-        showAlert(
-          <span><span className="alert-icon">❌</span>{error.response.data.message}</span>,
-          'error'
-        );
-      } else {
-        showAlert(
-          <span><span className="alert-icon">🌐</span>Network error. Please check your connection.</span>,
-          'error'
-        );
-      }
-      
-      // Clear student details on error
-      setShowStudentDetails(false);
-      setStudentInfo(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleMemberToggle = (systemId) => {
-    setSelectedMembers(prev => 
-      prev.includes(systemId) 
+    setSelectedMembers(prev =>
+      prev.includes(systemId)
         ? prev.filter(id => id !== systemId)
         : [...prev, systemId]
     );
@@ -411,13 +413,13 @@ const AttendanceForm = () => {
           </div>,
           'success'
         );
-        
+
         // Refresh team data
         handleTeamLookup();
       }
     } catch (error) {
       console.error('Error updating team attendance:', error);
-      
+
       if (error.response && error.response.data) {
         showAlert(
           <span><span className="alert-icon">❌</span>{error.response.data.message}</span>,
@@ -434,27 +436,17 @@ const AttendanceForm = () => {
     }
   };
 
-  // Clear alert when user starts typing
-  const handleInputChange = (e) => {
-    setSystemId(e.target.value);
-    if (alert) {
-      hideAlert();
-    }
-  };
+
 
   return (
     <div className="container">
       <div className="card">
         <div className="header">
-          <div className="logo-section">
-            <div className="sih-logo">🇮🇳</div>
-            <div className="title-section">
-              <h1 className="main-title">SIH Attendance Tracker</h1>
-              <p className="subtitle">Smart India Hackathon 2025</p>
-            </div>
+          <div className="title-section">
+            <h1 className="main-title">Attendance Tracker</h1>
           </div>
         </div>
-        
+
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <div className="input-type-toggle">
@@ -473,11 +465,11 @@ const AttendanceForm = () => {
                 👥 Entire Team
               </button>
             </div>
-            
+
             <label htmlFor={inputType === 'system' ? 'systemId' : 'teamId'} className="form-label">
               {inputType === 'system' ? 'Student System ID:' : 'Team ID:'}
             </label>
-            
+
             {inputType === 'system' ? (
               <div className="student-input-container">
                 <input
@@ -518,17 +510,17 @@ const AttendanceForm = () => {
               </div>
             )}
           </div>
-          
+
           <div className="button-group">
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className="btn btn-present"
               disabled={loading || absentLoading}
             >
               {loading ? 'Processing...' : '✓ Mark Present'}
             </button>
-            
-            <button 
+
+            <button
               type="button"
               onClick={handleMarkAbsent}
               className="btn btn-warning"
@@ -657,34 +649,41 @@ const AttendanceForm = () => {
         )}
 
         {alert && (
-          <Alert 
-            message={alert.message} 
-            type={alert.type} 
+          <Alert
+            message={alert.message}
+            type={alert.type}
             onClose={hideAlert}
           />
         )}
 
         <div className="navigation-section">
-          <Link to="/stats" className="nav-link">
-            📊 View Today's Statistics
-          </Link>
-          <button 
-            onClick={handleDownloadExcel} 
-            className="btn btn-excel nav-button"
-            disabled={downloading || loading || absentLoading}
-          >
-            {downloading ? 'Downloading...' : '📋 Download Excel'}
-          </button>
+          {isUserDashboard && onLogout && (
+            <button
+              onClick={onLogout}
+              className="btn btn-warning"
+              style={{ minWidth: '200px' }}
+            >
+              🚪 Logout
+            </button>
+          )}
+
+          {!isUserDashboard && (
+            <>
+              <Link to="/stats" className="nav-link">
+                📊 View Today's Statistics
+              </Link>
+              <button
+                onClick={handleDownloadExcel}
+                className="btn btn-excel nav-button"
+                disabled={downloading || loading || absentLoading}
+              >
+                {downloading ? 'Downloading...' : '📋 Download Excel'}
+              </button>
+            </>
+          )}
         </div>
-        
-        <div className="footer">
-          <p className="footer-text">
-            Powered by <strong>Smart India Hackathon 2025</strong>
-          </p>
-          <p className="footer-subtext">
-            Building Digital India 🇮🇳
-          </p>
-        </div>
+
+
       </div>
     </div>
   );

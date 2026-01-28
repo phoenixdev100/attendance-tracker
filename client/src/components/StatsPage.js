@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import Alert from './Alert';
@@ -24,11 +24,11 @@ const StatsPage = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const response = await axios.get('/api/today-stats');
       setStats(response.data);
       setLastUpdated(new Date().toLocaleTimeString());
-      
+
     } catch (error) {
       console.error('Error loading stats:', error);
       setError('Failed to load statistics. Please check your connection and try again.');
@@ -39,7 +39,7 @@ const StatsPage = () => {
 
   useEffect(() => {
     loadStats();
-    
+
     // Auto-refresh every 30 seconds
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
@@ -73,7 +73,7 @@ const StatsPage = () => {
 
     try {
       const response = await axios.post('/api/mark-absent', { systemId });
-      
+
       if (response.data.success) {
         // Refresh stats to update the list
         loadStats();
@@ -81,7 +81,7 @@ const StatsPage = () => {
       }
     } catch (error) {
       console.error('Error marking student absent:', error);
-      
+
       if (error.response && error.response.data) {
         alert(`Error: ${error.response.data.message}`);
       } else {
@@ -92,7 +92,7 @@ const StatsPage = () => {
 
   const handleDownloadExcel = async () => {
     setDownloading(true);
-    
+
     try {
       const response = await axios.get('/api/export-excel', {
         responseType: 'blob' // Important for file downloads
@@ -102,19 +102,19 @@ const StatsPage = () => {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      
+
       // Generate filename with current date
       const today = new Date().toISOString().split('T')[0];
       link.setAttribute('download', `attendance_records_${today}.xlsx`);
-      
+
       // Trigger download
       document.body.appendChild(link);
       link.click();
       link.remove();
-      
+
       // Clean up
       window.URL.revokeObjectURL(url);
-      
+
     } catch (error) {
       console.error('Error downloading Excel file:', error);
       alert('Error downloading file. Please try again.');
@@ -128,12 +128,8 @@ const StatsPage = () => {
       <div className="container">
         <div className="card">
           <div className="header">
-            <div className="logo-section">
-              <div className="sih-logo">🇮🇳</div>
-              <div className="title-section">
-                <h1 className="main-title">📊 SIH Attendance Stats</h1>
-                <p className="subtitle">Smart India Hackathon 2024</p>
-              </div>
+            <div className="title-section">
+              <h1 className="main-title">📊 Attendance Stats</h1>
             </div>
           </div>
           <div className="loading">
@@ -154,17 +150,13 @@ const StatsPage = () => {
       <div className="container">
         <div className="card">
           <div className="header">
-            <div className="logo-section">
-              <div className="sih-logo">🇮🇳</div>
-              <div className="title-section">
-                <h1 className="main-title">📊 SIH Attendance Stats</h1>
-                <p className="subtitle">Smart India Hackathon 2024</p>
-              </div>
+            <div className="title-section">
+              <h1 className="main-title">📊 Attendance Stats</h1>
             </div>
           </div>
-          <Alert 
-            message={error} 
-            type="error" 
+          <Alert
+            message={error}
+            type="error"
             onClose={() => setError(null)}
           />
           <div className="actions">
@@ -186,15 +178,11 @@ const StatsPage = () => {
     <div className="container">
       <div className="card">
         <div className="header">
-          <div className="logo-section">
-            <div className="sih-logo">🇮🇳</div>
-            <div className="title-section">
-              <h1 className="main-title">📊 SIH Attendance Stats</h1>
-              <p className="subtitle">Smart India Hackathon 2024</p>
-            </div>
+          <div className="title-section">
+            <h1 className="main-title">📊 Attendance Stats</h1>
           </div>
         </div>
-        
+
         {stats && (
           <>
             <div className="date-display">
@@ -206,12 +194,12 @@ const StatsPage = () => {
                 <div className="stat-number">{stats.total}</div>
                 <div className="stat-label">Total Students</div>
               </div>
-              
+
               <div className="stat-card present">
                 <div className="stat-number">{stats.present}</div>
                 <div className="stat-label">Present</div>
               </div>
-              
+
               <div className="stat-card absent">
                 <div className="stat-number">{stats.absent}</div>
                 <div className="stat-label">Absent</div>
@@ -221,8 +209,8 @@ const StatsPage = () => {
             <div className="attendance-rate">
               <div className="rate-label">Attendance Rate</div>
               <div className="rate-bar">
-                <div 
-                  className="rate-fill" 
+                <div
+                  className="rate-fill"
                   style={{ width: `${rate}%` }}
                 >
                   <div className="rate-text">{rate}%</div>
@@ -251,7 +239,7 @@ const StatsPage = () => {
                               hour12: true
                             })}
                           </div>
-                          <button 
+                          <button
                             className="btn-absent-small"
                             onClick={() => handleMarkAbsent(student.system_id, student.name)}
                             title="Mark as Absent"
@@ -279,30 +267,23 @@ const StatsPage = () => {
           <Link to="/" className="nav-link">
             ← Mark Attendance
           </Link>
-          <button 
-            onClick={refreshStats} 
+          <button
+            onClick={refreshStats}
             className="btn btn-secondary"
             disabled={loading}
           >
             {loading ? 'Refreshing...' : '🔄 Refresh'}
           </button>
-          <button 
-            onClick={handleDownloadExcel} 
+          <button
+            onClick={handleDownloadExcel}
             className="btn btn-excel"
             disabled={downloading || loading}
           >
             {downloading ? 'Downloading...' : '📊 Download Excel'}
           </button>
         </div>
-        
-        <div className="footer">
-          <p className="footer-text">
-            Powered by <strong>Smart India Hackathon 2025</strong>
-          </p>
-          <p className="footer-subtext">
-            Building Digital India 🇮🇳
-          </p>
-        </div>
+
+
       </div>
     </div>
   );

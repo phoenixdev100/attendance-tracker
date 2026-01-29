@@ -21,14 +21,41 @@ app.use(helmet({
   contentSecurityPolicy: false, // Disable CSP for development
 }));
 
-// CORS configuration for React development
+// CORS configuration for React development and production
+const allowedOrigins = process.env.NODE_ENV === 'production'
+  ? [
+      'https://orbito.space',
+      process.env.CORS_ORIGIN
+    ].filter(Boolean) // Remove any undefined values
+  : [
+      'http://localhost:3001',
+      'http://localhost:3000',
+      process.env.CORS_ORIGIN
+    ].filter(Boolean);
+
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production'
-    ? process.env.CORS_ORIGIN || false // In production, use env var or same origin
-    : [process.env.CORS_ORIGIN || 'http://localhost:3001', 'http://localhost:3000'], // React dev server ports
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Length', 'X-Request-Id'],
+  maxAge: 86400 // 24 hours
 };
+
 app.use(cors(corsOptions));
+
+// Explicitly handle OPTIONS requests for all routes
+app.options('*', cors(corsOptions));
 
 // Body parsing middleware
 app.use(express.json());

@@ -24,20 +24,20 @@ app.use(helmet({
 // CORS configuration for React development and production
 const allowedOrigins = process.env.NODE_ENV === 'production'
   ? [
-      'https://orbito.space',
-      process.env.CORS_ORIGIN
-    ].filter(Boolean) // Remove any undefined values
+    'https://orbito.space',
+    process.env.CORS_ORIGIN
+  ].filter(Boolean) // Remove any undefined values
   : [
-      'http://localhost:3001',
-      'http://localhost:3000',
-      process.env.CORS_ORIGIN
-    ].filter(Boolean);
+    'http://localhost:3001',
+    'http://localhost:3000',
+    process.env.CORS_ORIGIN
+  ].filter(Boolean);
 
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl, Postman)
     if (!origin) return callback(null, true);
-    
+
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
@@ -137,6 +137,7 @@ const initializeDatabase = async () => {
         date DATE NOT NULL,
         present BOOLEAN DEFAULT false,
         recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        marked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
         UNIQUE(student_id, date)
       )
     `);
@@ -669,7 +670,7 @@ app.put('/api/settings/:key', async (req, res) => {
 
 // API endpoint to mark a student present
 app.post('/api/mark-present', async (req, res) => {
-  const { systemId, teamId } = req.body;
+  const { systemId, teamId, userId } = req.body;
 
   // Input validation - must have either systemId or teamId
   if ((!systemId && !teamId) ||
@@ -678,6 +679,13 @@ app.post('/api/mark-present', async (req, res) => {
     return res.status(400).json({
       success: false,
       message: 'Either System ID or Team ID is required and must be a non-empty string'
+    });
+  }
+
+  if (!userId || typeof userId !== 'number') {
+    return res.status(400).json({
+      success: false,
+      message: 'User ID is required and must be a number'
     });
   }
 
@@ -755,19 +763,19 @@ app.post('/api/mark-present', async (req, res) => {
             // Update existing record to present
             const updateQuery = `
               UPDATE attendance 
-              SET present = true, recorded_at = CURRENT_TIMESTAMP 
+              SET present = true, recorded_at = CURRENT_TIMESTAMP, marked_by = $3 
               WHERE student_id = $1 AND date = $2
             `;
-            await client.query(updateQuery, [student.system_id, today]);
+            await client.query(updateQuery, [student.system_id, today, userId]);
             updatedStudents.push(student);
           }
         } else {
           // Insert new attendance record
           const insertQuery = `
-            INSERT INTO attendance (student_id, date, present, recorded_at) 
-            VALUES ($1, $2, true, CURRENT_TIMESTAMP)
+            INSERT INTO attendance (student_id, date, present, recorded_at, marked_by) 
+            VALUES ($1, $2, true, CURRENT_TIMESTAMP, $3)
           `;
-          await client.query(insertQuery, [student.system_id, today]);
+          await client.query(insertQuery, [student.system_id, today, userId]);
           markedStudents.push(student);
         }
       }
@@ -845,15 +853,17 @@ app.get('/api/today-stats', async (req, res) => {
 
     // Get list of present students with details
     const presentStudentsQuery = `
-      SELECT s.system_id, s.name, s.dept, a.recorded_at,
+      SELECT s.system_id, s.name, s.dept, a.recorded_at, a.marked_by,
+             u.username as marked_by_username, u.name as marked_by_name,
              STRING_AGG(DISTINCT t.team_id, ', ') as team_ids,
              STRING_AGG(DISTINCT t.team_name, ', ') as team_names
       FROM students s
       INNER JOIN attendance a ON s.system_id = a.student_id
+      LEFT JOIN users u ON a.marked_by = u.id
       LEFT JOIN student_teams st ON s.system_id = st.student_id
       LEFT JOIN teams t ON st.team_id = t.team_id
       WHERE a.date = $1 AND a.present = true
-      GROUP BY s.system_id, s.name, s.dept, a.recorded_at
+      GROUP BY s.system_id, s.name, s.dept, a.recorded_at, a.marked_by, u.username, u.name
       ORDER BY a.recorded_at ASC
     `;
     const presentStudentsResult = await pool.query(presentStudentsQuery, [today]);
@@ -871,6 +881,51 @@ app.get('/api/today-stats', async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching today\'s stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
+    });
+  }
+});
+
+// API endpoint to get user's marked students
+app.get('/api/user-stats/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const today = getTodayDate();
+
+  try {
+    // Get total number of students marked by this user today
+    const totalQuery = `
+      SELECT COUNT(*) as total 
+      FROM attendance 
+      WHERE marked_by = $1 AND date = $2 AND present = true
+    `;
+    const totalResult = await pool.query(totalQuery, [userId, today]);
+    const total = parseInt(totalResult.rows[0].total);
+
+    // Get list of students marked by this user today
+    const markedStudentsQuery = `
+      SELECT s.system_id, s.name, s.dept, a.recorded_at,
+             STRING_AGG(DISTINCT t.team_id, ', ') as team_ids,
+             STRING_AGG(DISTINCT t.team_name, ', ') as team_names
+      FROM students s
+      INNER JOIN attendance a ON s.system_id = a.student_id
+      LEFT JOIN student_teams st ON s.system_id = st.student_id
+      LEFT JOIN teams t ON st.team_id = t.team_id
+      WHERE a.marked_by = $1 AND a.date = $2 AND a.present = true
+      GROUP BY s.system_id, s.name, s.dept, a.recorded_at
+      ORDER BY a.recorded_at ASC
+    `;
+    const markedStudentsResult = await pool.query(markedStudentsQuery, [userId, today]);
+
+    res.json({
+      date: today,
+      total: total,
+      markedStudents: markedStudentsResult.rows
+    });
+
+  } catch (error) {
+    console.error('Error fetching user stats:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error. Please try again later.'

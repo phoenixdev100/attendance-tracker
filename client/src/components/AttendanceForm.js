@@ -229,8 +229,8 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
 
     try {
       const requestData = inputType === 'system'
-        ? { systemId: currentId }
-        : { teamId: currentId };
+        ? { systemId: currentId, userId: user?.id }
+        : { teamId: currentId, userId: user?.id };
 
       const response = await api.post('/api/mark-present', requestData);
 
@@ -434,7 +434,8 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
     try {
       const response = await api.post('/api/mark-team-attendance', {
         teamId: teamInfo.team_id,
-        selectedStudents: selectedMembers
+        selectedStudents: selectedMembers,
+        userId: user?.id
       });
 
       if (response.data.success) {

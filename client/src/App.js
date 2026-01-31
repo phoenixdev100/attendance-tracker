@@ -80,7 +80,7 @@ function App() {
                 user.role === 'admin' ? (
                   <AttendanceForm user={user} onLogout={handleLogout} showAdminNav={true} />
                 ) : (
-                  <AttendanceForm user={user} onLogout={handleLogout} isUserDashboard={true} />
+                  <UserDashboard user={user} onLogout={handleLogout} />
                 )
               ) : (
                 <Navigate to="/login" replace />
@@ -137,7 +137,7 @@ function App() {
                 user.role === 'admin' ? (
                   <Navigate to="/admin" replace />
                 ) : (
-                  <UserDashboard user={user} onLogout={handleLogout} />
+                  <Navigate to="/attendance" replace />
                 )
               ) : (
                 <Navigate to="/login" replace />

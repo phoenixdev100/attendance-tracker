@@ -1,5 +1,5 @@
 const { Pool } = require('pg');
-const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 const path = require('path');
 require('dotenv').config();
 
@@ -15,12 +15,26 @@ const importExcelData = async (filePath) => {
     // console.log('📊 Starting Excel data import...');
 
     // Read the Excel file
-    const workbook = XLSX.readFile(filePath);
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filePath);
+    const worksheet = workbook.worksheets[0];
 
     // Convert to JSON
-    const data = XLSX.utils.sheet_to_json(worksheet);
+    const data = [];
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // Skip header row
+      const rowData = {};
+      row.eachCell((cell, colNumber) => {
+        const header = worksheet.getRow(1).getCell(colNumber).value;
+        if (header) {
+          const headerKey = header.toString().toLowerCase().replace(/\s+/g, '_');
+          rowData[headerKey] = cell.value;
+        }
+      });
+      if (Object.keys(rowData).length > 0) {
+        data.push(rowData);
+      }
+    });
 
     if (data.length === 0) {
       throw new Error('Excel file is empty or has no valid data');

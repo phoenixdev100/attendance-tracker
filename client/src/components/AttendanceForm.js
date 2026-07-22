@@ -1,12 +1,24 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import {
+  User,
+  Users,
+  CheckCircle2,
+  XCircle,
+  ArrowLeft,
+  LogOut,
+  CalendarCheck2,
+  BadgeInfo,
+  Download,
+} from "lucide-react";
 import api from '../config/api';
 import Alert from './Alert';
 
 const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav = false }) => {
   const [systemId, setSystemId] = useState('');
   const [teamId, setTeamId] = useState('');
-  const [inputType, setInputType] = useState('system'); // 'system' or 'team'
+  const [inputType, setInputType] = useState('student'); // 'student' or 'team'
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState(null);
   const [absentLoading, setAbsentLoading] = useState(false);
@@ -18,6 +30,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
   const [studentInfo, setStudentInfo] = useState(null);
   const [showStudentDetails, setShowStudentDetails] = useState(false);
   const [teamFeatureEnabled, setTeamFeatureEnabled] = useState(true); // Default to true for admins
+  const [toast, setToast] = useState(null);
 
 
   const showAlert = (message, type, duration = null) => {
@@ -39,14 +52,11 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
     setAlert(null);
   };
 
-  const formatDisplayDate = (dateString) => {
-    const date = new Date(dateString + 'T00:00:00');
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
+  const showToast = (message, type = 'error') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 3000);
   };
 
   // Define handleTeamLookup before it's used in useEffect
@@ -66,26 +76,14 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
         setTeamMembers(response.data.members);
         setSelectedMembers(response.data.members.filter(m => m.isPresentToday).map(m => m.systemId));
         setShowTeamSelection(true);
-
-        showAlert(
-          <span><span className="alert-icon">👥</span>Team loaded: {response.data.team.team_name} ({response.data.totalMembers} members)</span>,
-          'success'
-        );
       }
     } catch (error) {
-      console.error('Error fetching team:', error);
+      // Silently handle expected 404/not-found lookup errors
 
-      // Only show error alerts for user-initiated actions, not auto-lookup
       if (error.response && error.response.data) {
-        showAlert(
-          <span><span className="alert-icon">❌</span>{error.response.data.message}</span>,
-          'error'
-        );
+        showToast(error.response.data.message, 'error');
       } else {
-        showAlert(
-          <span><span className="alert-icon">🌐</span>Network error. Please check your connection.</span>,
-          'error'
-        );
+        showToast('Network error. Please check your connection.', 'error');
       }
 
       // Clear team selection on error
@@ -99,6 +97,13 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
   }, [teamId]);
 
   // Define handleStudentLookup before it's used in useEffect
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    localStorage.removeItem('token');
+    if (onLogout) onLogout();
+    navigate('/login');
+  };
+
   const handleStudentLookup = useCallback(async () => {
     if (!systemId.trim()) {
       return;
@@ -113,25 +118,14 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
       if (response.data.success) {
         setStudentInfo(response.data.student);
         setShowStudentDetails(true);
-
-        showAlert(
-          <span><span className="alert-icon">👤</span>Student found: {response.data.student.name}{response.data.student.team_names ? ` (${response.data.student.team_names})` : ''}</span>,
-          'success'
-        );
       }
     } catch (error) {
-      console.error('Error fetching student:', error);
+      // Silently handle expected 404/not-found lookup errors
 
       if (error.response && error.response.data) {
-        showAlert(
-          <span><span className="alert-icon">❌</span>{error.response.data.message}</span>,
-          'error'
-        );
+        showToast(error.response.data.message, 'error');
       } else {
-        showAlert(
-          <span><span className="alert-icon">🌐</span>Network error. Please check your connection.</span>,
-          'error'
-        );
+        showToast('Network error. Please check your connection.', 'error');
       }
 
       // Clear student details on error
@@ -144,9 +138,9 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
 
   useEffect(() => {
     // Focus on input when component mounts
-    const input = document.getElementById('systemId');
+    const input = document.getElementById('idInput');
     if (input) input.focus();
-  }, []);
+  }, [inputType]);
 
   // Load settings to check if team feature is enabled
   useEffect(() => {
@@ -162,16 +156,16 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
         const response = await api.get('/api/settings/team_feature_enabled');
         if (response.data.success) {
           setTeamFeatureEnabled(response.data.setting.value);
-          // If team feature is disabled, switch to system mode
+          // If team feature is disabled, switch to student mode
           if (!response.data.setting.value && inputType === 'team') {
-            setInputType('system');
+            setInputType('student');
           }
         }
       } catch (error) {
         console.error('Error loading settings:', error);
         // Default to false for users if error
         setTeamFeatureEnabled(false);
-        setInputType('system');
+        setInputType('student');
       }
     };
 
@@ -184,7 +178,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
     if (inputType === 'team' && teamId.trim() && teamId.trim().length >= 4) {
       const timeoutId = setTimeout(() => {
         handleTeamLookup();
-      }, 800); // 800ms debounce
+      }, 1500); // 1.5s debounce
 
       return () => clearTimeout(timeoutId);
     } else {
@@ -198,10 +192,10 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
 
   // Auto-fetch student details when system ID changes
   useEffect(() => {
-    if (inputType === 'system' && systemId.trim() && systemId.trim().length >= 4) {
+    if (inputType === 'student' && systemId.trim() && systemId.trim().length >= 4) {
       const timeoutId = setTimeout(() => {
         handleStudentLookup();
-      }, 800); // 800ms debounce
+      }, 1500); // 1.5s debounce
 
       return () => clearTimeout(timeoutId);
     } else {
@@ -214,43 +208,33 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const currentId = inputType === 'system' ? systemId.trim() : teamId.trim();
+    const currentId = inputType === 'student' ? systemId.trim() : teamId.trim();
 
     if (!currentId) {
       showAlert(
-        <span><span className="alert-icon">📝</span>Please enter a {inputType === 'system' ? 'student system ID' : 'team ID'}</span>,
+        <span><span className="alert-icon">📝</span>Please enter a {inputType === 'student' ? 'student system ID' : 'team ID'}</span>,
         'info'
       );
       return;
+    }
+
+    // In team mode, form submit should load the team instead of marking present
+    if (inputType === 'team') {
+      return handleTeamLookup();
     }
 
     setLoading(true);
     hideAlert();
 
     try {
-      const requestData = inputType === 'system'
+      const requestData = inputType === 'student'
         ? { systemId: currentId, userId: user?.id }
         : { teamId: currentId, userId: user?.id };
 
       const response = await api.post('/api/mark-present', requestData);
 
       if (response.data.success) {
-        let successMessage = (
-          <div>
-            <span className="alert-icon">✅</span>
-            <strong>Attendance Recorded!</strong><br />
-            {response.data.message}
-            {response.data.student && (
-              <div className="student-info">
-                <strong>Student:</strong> {response.data.student.name} ({response.data.student.systemId})<br />
-                <strong>Date:</strong> {formatDisplayDate(response.data.date)}<br />
-                <strong>Status:</strong> Present ✓
-              </div>
-            )}
-          </div>
-        );
-
-        showAlert(successMessage, 'success');
+        showToast('Attendance marked successfully', 'success');
         setSystemId(''); // Clear input on success
 
         // Focus back on input
@@ -315,22 +299,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
       });
 
       if (response.data.success) {
-        let successMessage = (
-          <div>
-            <span className="alert-icon">❌</span>
-            <strong>Marked as Absent!</strong><br />
-            {response.data.message}
-            {response.data.student && (
-              <div className="student-info">
-                <strong>Student:</strong> {response.data.student.name} ({response.data.student.systemId})<br />
-                <strong>Date:</strong> {formatDisplayDate(response.data.date)}<br />
-                <strong>Status:</strong> Absent ❌
-              </div>
-            )}
-          </div>
-        );
-
-        showAlert(successMessage, 'warning');
+        showToast('Attendance Updated', 'success');
         setSystemId(''); // Clear input on success
 
         // Focus back on input
@@ -447,6 +416,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
           </div>,
           'success'
         );
+        showToast('Team attendance updated', 'success');
 
         // Refresh team data
         handleTeamLookup();
@@ -473,271 +443,301 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
 
 
   return (
-    <div className="container">
-      <div className="card">
-        <div className="header">
-          <div className="title-section">
-            <h1 className="main-title">Attendance Tracker</h1>
-          </div>
-        </div>
+    <div className="h-screen w-full bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden p-4">
 
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            {/* Only show toggle if team feature is enabled */}
-            {teamFeatureEnabled && (
-              <div className="input-type-toggle">
-                <button
-                  type="button"
-                  className={`toggle-btn ${inputType === 'system' ? 'active' : ''}`}
-                  onClick={() => setInputType('system')}
-                >
-                  👤 Individual Student
-                </button>
-                <button
-                  type="button"
-                  className={`toggle-btn ${inputType === 'team' ? 'active' : ''}`}
-                  onClick={() => setInputType('team')}
-                >
-                  👥 Entire Team
-                </button>
-              </div>
-            )}
+      {/* Background */}
+      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-blue-200/40 blur-3xl"></div>
+      <div className="absolute -bottom-40 -right-40 h-[450px] w-[450px] rounded-full bg-indigo-300/30 blur-3xl"></div>
 
-            <label htmlFor={inputType === 'system' ? 'systemId' : 'teamId'} className="form-label">
-              {inputType === 'system' ? 'Student System ID:' : 'Team ID:'}
-            </label>
-
-            {inputType === 'system' ? (
-              <div className="student-input-container">
-                <input
-                  type="text"
-                  id="systemId"
-                  value={systemId}
-                  onChange={(e) => setSystemId(e.target.value)}
-                  placeholder="Enter student system ID"
-                  className={`form-input ${loading ? 'loading-input' : ''}`}
-                  disabled={absentLoading}
-                  autoComplete="off"
-                />
-                {loading && inputType === 'system' && (
-                  <div className="input-loading-indicator">
-                    <span className="loading-spinner">⏳</span>
-                    <span className="loading-text">Loading student...</span>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="team-input-container">
-                <input
-                  type="text"
-                  id="teamId"
-                  value={teamId}
-                  onChange={(e) => setTeamId(e.target.value)}
-                  placeholder="Enter team ID"
-                  className={`form-input ${loading ? 'loading-input' : ''}`}
-                  disabled={absentLoading}
-                  autoComplete="off"
-                />
-                {loading && inputType === 'team' && (
-                  <div className="input-loading-indicator">
-                    <span className="loading-spinner">⏳</span>
-                    <span className="loading-text">Loading team...</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="button-group">
-            <button
-              type="submit"
-              className="btn btn-present"
-              disabled={loading || absentLoading}
-            >
-              {loading ? 'Processing...' : '✓ Mark Present'}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleMarkAbsent}
-              className="btn btn-warning"
-              disabled={loading || absentLoading}
-            >
-              {absentLoading ? 'Processing...' : '❌ Mark Absent'}
-            </button>
-          </div>
-        </form>
-
-        {/* Student Details Interface */}
-        {showStudentDetails && studentInfo && (
-          <div className="student-details-section">
-            <div className="student-header">
-              <h3>👤 {studentInfo.name}</h3>
-              <div className="student-meta">
-                <span className="student-id-badge">{studentInfo.systemId}</span>
-                {studentInfo.dept && (
-                  <span className="dept-badge">{studentInfo.dept}</span>
-                )}
-                {studentInfo.team_names && (
-                  <span className="team-badge">Teams: {studentInfo.team_names}</span>
-                )}
-              </div>
-            </div>
-
-            <div className="attendance-status">
-              <div className={`status-card ${studentInfo.isPresentToday ? 'present' : 'absent'}`}>
-                <div className="status-icon">
-                  {studentInfo.isPresentToday ? '✅' : '❌'}
-                </div>
-                <div className="status-info">
-                  <div className="status-text">
-                    {studentInfo.isPresentToday ? 'Present Today' : 'Not Present Today'}
-                  </div>
-                  {studentInfo.isPresentToday && studentInfo.recordedAt && (
-                    <div className="recorded-time">
-                      Recorded at: {new Date(studentInfo.recordedAt).toLocaleString('en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: true,
-                        month: 'short',
-                        day: 'numeric'
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Team Member Selection Interface */}
-        {showTeamSelection && teamInfo && (
-          <div className="team-selection-section">
-            <div className="team-header">
-              <h3>👥 {teamInfo.team_name}</h3>
-              <p className="team-stats">
-                {selectedMembers.length} of {teamMembers.length} members selected
-              </p>
-            </div>
-
-            <div className="selection-controls">
-              <button
-                type="button"
-                onClick={handleSelectAll}
-                className="btn btn-secondary btn-small"
-                disabled={loading}
-              >
-                ✅ Select All
-              </button>
-              <button
-                type="button"
-                onClick={handleSelectNone}
-                className="btn btn-secondary btn-small"
-                disabled={loading}
-              >
-                ❌ Select None
-              </button>
-            </div>
-
-            <div className="team-members-grid">
-              {teamMembers.map((member) => (
-                <div
-                  key={member.systemId}
-                  className={`member-card ${selectedMembers.includes(member.systemId) ? 'selected' : ''} ${member.isPresentToday ? 'already-present' : ''}`}
-                  onClick={() => handleMemberToggle(member.systemId)}
-                >
-                  <div className="member-info">
-                    <div className="member-name">{member.name}</div>
-                    <div className="member-id">{member.systemId}</div>
-                    {member.dept && (
-                      <div className="member-dept">{member.dept}</div>
-                    )}
-                  </div>
-                  <div className="member-status">
-                    {selectedMembers.includes(member.systemId) ? (
-                      <span className="status-icon present">✅</span>
-                    ) : (
-                      <span className="status-icon absent">❌</span>
-                    )}
-                    {member.isPresentToday && (
-                      <span className="already-marked">Already Present</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="team-submit-section">
-              <button
-                onClick={handleTeamAttendanceSubmit}
-                className="btn btn-present btn-large"
-                disabled={loading}
-              >
-                {loading ? 'Updating...' : '💾 Update Team Attendance'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {(loading || absentLoading) && (
-          <div className="loading">
-            Processing...
-          </div>
-        )}
+      <div className="max-w-3xl mx-auto h-full flex flex-col relative">
 
         {alert && (
-          <Alert
-            message={alert.message}
-            type={alert.type}
-            onClose={hideAlert}
-          />
+          <div className="mb-3 shrink-0">
+            <Alert
+              message={alert.message}
+              type={alert.type}
+              onClose={hideAlert}
+            />
+          </div>
         )}
 
-        <div className="navigation-section">
-          {/* User dashboard - only logout */}
-          {isUserDashboard && onLogout && (
+        {/* Card */}
+        <div className="bg-white/80 backdrop-blur-xl rounded-[32px] shadow-2xl border border-white p-4 md:p-6 flex-1 flex flex-col overflow-hidden">
+
+          {/* Top bar: actions in corners, icon centered */}
+          <div className="relative flex items-center justify-between shrink-0">
+
+            {/* Left action */}
+            <div>
+              {showAdminNav ? (
+                <button
+                  onClick={() => navigate('/admin')}
+                  className="border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white transition px-4 py-2 rounded-xl font-semibold flex items-center gap-2 text-sm"
+                >
+                  <ArrowLeft />
+                  Dashboard
+                </button>
+              ) : (
+                !isUserDashboard && (
+                  <button
+                    onClick={handleDownloadExcel}
+                    disabled={downloading || loading || absentLoading}
+                    className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white px-4 py-2 rounded-xl shadow-lg font-semibold flex items-center gap-2 text-sm transition"
+                  >
+                    <Download />
+                    {downloading ? '...' : 'Excel'}
+                  </button>
+                )
+              )}
+            </div>
+
+            {/* Center icon */}
+            <div className="absolute left-1/2 -translate-x-1/2 top-0">
+              <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center">
+                <CalendarCheck2 className="text-blue-600" size={32} />
+              </div>
+            </div>
+
+            {/* Right action */}
             <button
-              onClick={onLogout}
-              className="btn btn-warning"
-              style={{ minWidth: '200px' }}
+              onClick={handleLogout}
+              className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl shadow-lg font-semibold flex items-center gap-2 text-sm"
             >
-              🚪 Logout
+              Logout
+              <LogOut />
             </button>
+
+          </div>
+
+          {/* Header */}
+          <div className="flex flex-col items-center mt-2">
+
+            <h1 className="mt-3 text-3xl font-bold text-slate-800">
+              Attendance Tracker
+            </h1>
+
+            <p className="mt-2 text-base text-slate-500">
+              Mark attendance quickly and accurately
+            </p>
+
+            <div className="w-16 h-1 rounded-full bg-blue-600 mt-3"></div>
+
+          </div>
+
+          {/* Toggle */}
+          {teamFeatureEnabled && (
+            <div className="mt-4 grid grid-cols-2 rounded-2xl overflow-hidden border">
+              <button
+                onClick={() => setInputType('student')}
+                className={`py-2 font-semibold flex justify-center items-center gap-2 transition ${
+                  inputType === 'student'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white hover:bg-blue-50'
+                }`}
+              >
+                <User size={20} />
+                Individual Student
+              </button>
+
+              <button
+                onClick={() => setInputType('team')}
+                className={`py-2 font-semibold flex justify-center items-center gap-2 transition ${
+                  inputType === 'team'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white hover:bg-blue-50'
+                }`}
+              >
+                <Users size={20} />
+                Entire Team
+              </button>
+            </div>
           )}
 
-          {/* Admin navigation from /attendance route */}
-          {showAdminNav && (
-            <>
-              <Link to="/admin" className="nav-link">
-                ← Back to Dashboard
-              </Link>
-              <button
-                onClick={onLogout}
-                className="btn btn-warning"
-              >
-                🚪 Logout
-              </button>
-            </>
+          <form onSubmit={handleSubmit}>
+            {/* Input Card */}
+            <div className="mt-4 bg-slate-50 rounded-3xl border p-4 md:p-5">
+
+              <label className="font-semibold text-base flex items-center gap-2">
+                {inputType === 'student'
+                  ? 'Student System ID'
+                  : 'Team ID'}
+
+                <BadgeInfo size={16} className="text-slate-400" />
+              </label>
+
+              <div className="mt-3 flex items-center rounded-2xl border bg-white px-4 py-3 focus-within:ring-2 focus-within:ring-blue-500">
+                {inputType === 'student' ? (
+                  <User className="text-blue-500" />
+                ) : (
+                  <Users className="text-blue-500" />
+                )}
+
+                <input
+                  id="idInput"
+                  type="text"
+                  value={inputType === 'student' ? systemId : teamId}
+                  onChange={(e) => inputType === 'student' ? setSystemId(e.target.value) : setTeamId(e.target.value)}
+                  placeholder={
+                    inputType === 'student'
+                      ? 'Enter student system ID'
+                      : 'Enter team ID'
+                  }
+                  disabled={absentLoading}
+                  autoComplete="off"
+                  className="ml-3 w-full outline-none text-base"
+                />
+              </div>
+
+              <p className="mt-2 text-sm text-slate-500">
+                {inputType === 'student'
+                  ? 'Enter the student\'s unique system ID.'
+                  : 'Enter the registered team ID.'}
+              </p>
+
+              {loading && inputType === 'student' && (
+                <p className="mt-2 text-sm text-blue-600">Loading student...</p>
+              )}
+              {loading && inputType === 'team' && (
+                <p className="mt-2 text-sm text-blue-600">Loading team...</p>
+              )}
+
+            </div>
+
+            {/* Buttons - only for individual student mode */}
+            {inputType === 'student' && (
+              <div className="grid md:grid-cols-2 gap-4 mt-4">
+                <button
+                  type="submit"
+                  disabled={loading || absentLoading}
+                  className="bg-green-500 hover:bg-green-600 disabled:bg-green-300 transition text-white rounded-2xl py-3 font-semibold text-lg flex items-center justify-center gap-2 shadow-lg"
+                >
+                  <CheckCircle2 />
+                  {loading ? 'Processing...' : 'Mark Present'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleMarkAbsent}
+                  disabled={loading || absentLoading}
+                  className="bg-red-500 hover:bg-red-600 disabled:bg-red-300 transition text-white rounded-2xl py-3 font-semibold text-lg flex items-center justify-center gap-2 shadow-lg"
+                >
+                  <XCircle />
+                  {absentLoading ? 'Processing...' : 'Mark Absent'}
+                </button>
+              </div>
+            )}
+
+            {inputType === 'team' && (
+              <p className="mt-4 text-sm text-slate-500 text-center">
+                Select team members below and use <strong>Update Team Attendance</strong>.
+              </p>
+            )}
+          </form>
+
+          <div className="flex-1 min-h-0 overflow-y-auto">
+          {/* Student Details */}
+          {showStudentDetails && studentInfo && (
+            <div className="mt-4 bg-blue-50 rounded-3xl p-4">
+              <h3 className="text-xl font-bold text-slate-800">👤 {studentInfo.name}</h3>
+              <div className="flex flex-wrap gap-2 mt-2">
+                <span className="bg-white px-3 py-1 rounded-full text-sm font-medium">{studentInfo.systemId}</span>
+                {studentInfo.dept && <span className="bg-white px-3 py-1 rounded-full text-sm font-medium">{studentInfo.dept}</span>}
+                {studentInfo.team_names && <span className="bg-white px-3 py-1 rounded-full text-sm font-medium">Teams: {studentInfo.team_names}</span>}
+              </div>
+              <div className={`mt-4 p-4 rounded-2xl ${studentInfo.isPresentToday ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                <div className="font-bold text-lg">
+                  {studentInfo.isPresentToday ? 'Present Today' : 'Not Present Today'}
+                </div>
+                {studentInfo.isPresentToday && studentInfo.recordedAt && (
+                  <div className="text-sm mt-1">
+                    Recorded at: {new Date(studentInfo.recordedAt).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, month: 'short', day: 'numeric' })}
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
-          {/* Default navigation (when not user dashboard or admin nav) */}
-          {!isUserDashboard && !showAdminNav && (
-            <>
-              <Link to="/stats" className="nav-link">
-                📊 View Today's Statistics
-              </Link>
+          {/* Team Member Selection */}
+          {showTeamSelection && teamInfo && (
+            <div className="mt-4 bg-slate-50 rounded-3xl p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-slate-800">👥 {teamInfo.team_name}</h3>
+                <p className="text-slate-500 text-sm">
+                  {selectedMembers.length} of {teamMembers.length} selected
+                </p>
+              </div>
+
+              <div className="flex gap-3 mb-4">
+                <button
+                  type="button"
+                  onClick={handleSelectAll}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-semibold"
+                  disabled={loading}
+                >
+                  Select All
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSelectNone}
+                  className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold"
+                  disabled={loading}
+                >
+                  Select None
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-64 overflow-y-auto pr-2">
+                {teamMembers.map((member) => (
+                  <div
+                    key={member.systemId}
+                    onClick={() => handleMemberToggle(member.systemId)}
+                    className={`p-3 rounded-2xl border cursor-pointer transition ${
+                      selectedMembers.includes(member.systemId)
+                        ? 'bg-green-50 border-green-500'
+                        : 'bg-white border-slate-200'
+                    } ${member.isPresentToday ? 'opacity-75' : ''}`}
+                  >
+                    <div className="font-semibold text-sm">{member.name}</div>
+                    <div className="text-xs text-slate-500">{member.systemId}</div>
+                    {member.isPresentToday && (
+                      <div className="text-xs text-green-600 font-medium mt-1">Already Present</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
               <button
-                onClick={handleDownloadExcel}
-                className="btn btn-excel nav-button"
-                disabled={downloading || loading || absentLoading}
+                onClick={handleTeamAttendanceSubmit}
+                disabled={loading}
+                className="mt-4 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-3 rounded-2xl font-semibold transition"
               >
-                {downloading ? 'Downloading...' : '📋 Download Excel'}
+                {loading ? 'Updating...' : 'Update Team Attendance'}
               </button>
-            </>
+            </div>
           )}
+          </div>
+
+          {/* Footer */}
+          <div className="mt-4 border-t pt-4 flex justify-center shrink-0">
+            <div className="flex items-center gap-3 text-slate-500">
+              <CheckCircle2 className="text-blue-600" />
+              <span className="font-medium">
+                Secure • Reliable • Smart Attendance
+              </span>
+            </div>
+          </div>
+
         </div>
 
       </div>
+
+      {/* Bottom-right toast */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 px-4 py-3 rounded-2xl shadow-lg text-sm font-medium z-50 ${toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-rose-500 text-slate-50'}`}>
+          {toast.message}
+        </div>
+      )}
+
     </div>
   );
 };

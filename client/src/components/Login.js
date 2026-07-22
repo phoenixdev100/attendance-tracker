@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { User, Lock, LogIn } from "lucide-react";
 import api from '../config/api';
 import Alert from './Alert';
 
 const Login = ({ onLogin }) => {
-    const [username, setUsername] = useState('');
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [alert, setAlert] = useState(null);
@@ -18,26 +19,23 @@ const Login = ({ onLogin }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        if (!username || !password) {
-            showAlert('Please enter both username and password', 'warning');
+        if (!email || !password) {
+            showAlert('Please enter both email and password', 'warning');
             return;
         }
 
         setLoading(true);
 
         try {
-            const response = await api.post('/api/login', { username, password });
+            const response = await api.post('/api/login', { email, password });
             const data = response.data;
 
             if (data.success) {
-                // Store user info in localStorage
                 localStorage.setItem('user', JSON.stringify(data.user));
                 localStorage.setItem('token', data.token);
 
-                // Call parent onLogin callback
                 onLogin(data.user);
 
-                // Navigate based on role
                 if (data.user.role === 'admin') {
                     navigate('/admin');
                 } else {
@@ -58,55 +56,74 @@ const Login = ({ onLogin }) => {
     };
 
     return (
-        <div className="container">
-            <div className="card">
-                <div className="header">
-                    <div className="title-section">
-                        <h1 className="main-title">🔐 Login</h1>
-                        <p className="subtitle">Attendance Tracker</p>
+        <div className="min-h-screen bg-gradient-to-br from-blue-100 via-white to-indigo-100 flex items-center justify-center px-4">
+            <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8">
+
+                {/* Logo */}
+                <div className="flex justify-center mb-6">
+                    <div className="bg-blue-600 text-white w-16 h-16 rounded-2xl flex items-center justify-center text-3xl font-bold">
+                        A
                     </div>
                 </div>
 
+                {/* Heading */}
+                <h1 className="text-3xl font-bold text-center text-gray-800">
+                    Smart Attendance
+                </h1>
+
+                <p className="text-center text-gray-500 mt-2 mb-8">
+                    Sign in to continue
+                </p>
+
                 <form onSubmit={handleSubmit}>
-                    <div className="form-group">
-                        <label htmlFor="username" className="form-label">
-                            Username:
+                    {/* Email */}
+                    <div className="mb-5">
+                        <label className="block text-gray-700 font-medium mb-2">
+                            Email
                         </label>
-                        <input
-                            type="text"
-                            id="username"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
-                            placeholder="Enter your username"
-                            className="form-input"
-                            disabled={loading}
-                            autoComplete="username"
-                        />
+
+                        <div className="flex items-center border rounded-xl px-4 py-3 focus-within:ring-2 focus-within:ring-blue-500">
+                            <User className="text-gray-400 mr-3" size={20} />
+                            <input
+                                type="email"
+                                placeholder="Enter your email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                className="w-full outline-none"
+                                disabled={loading}
+                                autoComplete="email"
+                            />
+                        </div>
                     </div>
 
-                    <div className="form-group">
-                        <label htmlFor="password" className="form-label">
-                            Password:
+                    {/* Password */}
+                    <div className="mb-8">
+                        <label className="block text-gray-700 font-medium mb-2">
+                            Password
                         </label>
-                        <input
-                            type="password"
-                            id="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="Enter your password"
-                            className="form-input"
-                            disabled={loading}
-                            autoComplete="current-password"
-                        />
+
+                        <div className="flex items-center border rounded-xl px-4 py-3 focus-within:ring-2 focus-within:ring-blue-500">
+                            <Lock className="text-gray-400 mr-3" size={20} />
+                            <input
+                                type="password"
+                                placeholder="Enter your password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                className="w-full outline-none"
+                                disabled={loading}
+                                autoComplete="current-password"
+                            />
+                        </div>
                     </div>
 
+                    {/* Login Button */}
                     <button
                         type="submit"
-                        className="btn btn-present"
                         disabled={loading}
-                        style={{ width: '100%' }}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition"
                     >
-                        {loading ? 'Logging in...' : '🔓 Login'}
+                        <LogIn size={20} />
+                        {loading ? 'Logging in...' : 'Login'}
                     </button>
                 </form>
 

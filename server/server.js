@@ -4,7 +4,7 @@ const path = require('path');
 require('dotenv').config();
 const helmet = require('helmet');
 const cors = require('cors');
-const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 const multer = require('multer');
 const os = require('os');
 const upload = multer({
@@ -241,22 +241,22 @@ app.get('/health', (req, res) => {
 
 // API endpoint for login
 app.post('/api/login', async (req, res) => {
-  const { username, password } = req.body;
+  const { email, password } = req.body;
 
   // Input validation
-  if (!username || !password) {
+  if (!email || !password) {
     return res.status(400).json({
       success: false,
-      message: 'Username and password are required'
+      message: 'Email and password are required'
     });
   }
 
   try {
     const bcrypt = require('bcryptjs');
 
-    // Query database for user
+    // Query database for user using email (stored in username column)
     const userQuery = 'SELECT * FROM users WHERE username = $1';
-    const result = await pool.query(userQuery, [username.toLowerCase()]);
+    const result = await pool.query(userQuery, [email.toLowerCase()]);
 
     if (result.rows.length === 0) {
       return res.status(401).json({
@@ -944,12 +944,25 @@ app.post('/api/upload-students', upload.single('excelFile'), async (req, res) =>
     }
 
     // Read the Excel file
-    const workbook = XLSX.readFile(req.file.path);
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(req.file.path);
+    const worksheet = workbook.worksheets[0];
 
     // Convert to JSON
-    const data = XLSX.utils.sheet_to_json(worksheet);
+    const data = [];
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // Skip header row
+      const rowData = {};
+      row.eachCell((cell, colNumber) => {
+        const header = worksheet.getRow(1).getCell(colNumber).value;
+        if (header) {
+          rowData[header.toString().toLowerCase().replace(/\s+/g, '_')] = cell.value;
+        }
+      });
+      if (Object.keys(rowData).length > 0) {
+        data.push(rowData);
+      }
+    });
 
     if (data.length === 0) {
       return res.status(400).json({
@@ -1516,25 +1529,25 @@ app.get('/api/export-excel', async (req, res) => {
     }));
 
     // Create workbook and worksheet
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(excelData);
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Attendance Records');
 
-    // Set column widths
-    ws['!cols'] = [
-      { wch: 8 },  // S.No
-      { wch: 15 }, // Team IDs
-      { wch: 12 }, // System ID
-      { wch: 25 }, // Student Name
-      { wch: 30 }, // Department
-      { wch: 10 }, // Status
-      { wch: 22 }  // Recorded At
+    // Add columns
+    ws.columns = [
+      { header: 'S.No', key: 's_no', width: 8 },
+      { header: 'Team IDs', key: 'team_ids', width: 15 },
+      { header: 'System ID', key: 'system_id', width: 12 },
+      { header: 'Student Name', key: 'name', width: 25 },
+      { header: 'Department', key: 'dept', width: 30 },
+      { header: 'Status', key: 'status', width: 10 },
+      { header: 'Recorded At', key: 'recorded_at', width: 22 }
     ];
 
-    // Add worksheet to workbook
-    XLSX.utils.book_append_sheet(wb, ws, 'Attendance Records');
+    // Add data
+    ws.addRows(excelData);
 
     // Generate buffer
-    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const buffer = await wb.xlsx.writeBuffer();
 
     // Set headers for file download
     const filename = `attendance_records_${new Date().toISOString().split('T')[0]}.xlsx`;

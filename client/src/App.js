@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
+import Home from './components/Home';
 import AdminDashboard from './components/AdminDashboard';
 import UserDashboard from './components/UserDashboard';
 import AttendanceForm from './components/AttendanceForm';
@@ -54,7 +55,7 @@ function App() {
             path="/login"
             element={
               user ? (
-                <Navigate to={user.role === 'admin' ? '/admin' : '/'} replace />
+                <Navigate to={user.role === 'admin' ? '/admin' : '/attendance'} replace />
               ) : (
                 <Login onLogin={handleLogin} />
               )
@@ -129,9 +130,12 @@ function App() {
             }
           />
 
+          {/* Landing page - public route */}
+          <Route path="/" element={<Home />} />
+
           {/* User routes */}
           <Route
-            path="/"
+            path="/dashboard"
             element={
               user ? (
                 user.role === 'admin' ? (
@@ -148,7 +152,7 @@ function App() {
           {/* Catch all */}
           <Route
             path="*"
-            element={<Navigate to={user ? (user.role === 'admin' ? '/admin' : '/') : '/login'} replace />}
+            element={<Navigate to={user ? (user.role === 'admin' ? '/admin' : '/attendance') : '/'} replace />}
           />
         </Routes>
       </div>

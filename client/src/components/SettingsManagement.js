@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../config/api';
-import Alert from './Alert';
+import { useToast } from '../hooks/useToast';
 
 const SettingsManagement = () => {
     const [settings, setSettings] = useState({});
     const [loading, setLoading] = useState(false);
-    const [alert, setAlert] = useState(null);
+    const { showToast } = useToast();
     const [hasLoaded, setHasLoaded] = useState(false);
     const [saving, setSaving] = useState(false);
 
@@ -18,15 +18,10 @@ const SettingsManagement = () => {
             setHasLoaded(true);
         } catch (error) {
             console.error('Error loading settings:', error);
-            showAlert('Failed to load settings', 'error');
+            showToast('Failed to load settings', 'error');
         } finally {
             setLoading(false);
         }
-    };
-
-    const showAlert = (message, type) => {
-        setAlert({ message, type });
-        setTimeout(() => setAlert(null), 5000);
     };
 
     const handleToggle = async (key, currentValue) => {
@@ -45,12 +40,12 @@ const SettingsManagement = () => {
                         value: !currentValue
                     }
                 }));
-                showAlert('Setting updated successfully!', 'success');
+                showToast('Setting updated successfully!', 'success');
             }
         } catch (error) {
             console.error('Error updating setting:', error);
             const message = error.response?.data?.message || 'Failed to update setting';
-            showAlert(message, 'error');
+            showToast(message, 'error');
         } finally {
             setSaving(false);
         }
@@ -73,14 +68,6 @@ const SettingsManagement = () => {
                     )}
                 </div>
             </div>
-
-            {alert && (
-                <Alert
-                    message={alert.message}
-                    type={alert.type}
-                    onClose={() => setAlert(null)}
-                />
-            )}
 
             {!hasLoaded ? (
                 <div style={{ textAlign: 'center', padding: '60px 20px' }}>
@@ -107,7 +94,7 @@ const SettingsManagement = () => {
                                             <div className="setting-description">{setting.description}</div>
                                             {setting.updated_at && (
                                                 <div className="setting-updated">
-                                                    Last updated: {new Date(setting.updated_at).toLocaleString()}
+                                                    Last updated: {new Date(setting.updated_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
                                                 </div>
                                             )}
                                         </div>

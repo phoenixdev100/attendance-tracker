@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../config/api';
-import Alert from './Alert';
+import { useToast } from '../hooks/useToast';
 
 const UserManagement = () => {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [alert, setAlert] = useState(null);
+    const { showToast } = useToast();
     const [showModal, setShowModal] = useState(false);
     const [modalMode, setModalMode] = useState('create'); // 'create' or 'edit'
     const [currentUser, setCurrentUser] = useState(null);
@@ -26,15 +26,10 @@ const UserManagement = () => {
             setHasLoaded(true);
         } catch (error) {
             console.error('Error loading users:', error);
-            showAlert('Failed to load users', 'error');
+            showToast('Failed to load users', 'error');
         } finally {
             setLoading(false);
         }
-    };
-
-    const showAlert = (message, type) => {
-        setAlert({ message, type });
-        setTimeout(() => setAlert(null), 5000);
     };
 
     const openCreateModal = () => {
@@ -74,31 +69,31 @@ const UserManagement = () => {
 
         // Validation
         if (!formData.username || !formData.name) {
-            showAlert('Username and name are required', 'warning');
+            showToast('Username and name are required', 'warning');
             return;
         }
 
         if (modalMode === 'create' && !formData.password) {
-            showAlert('Password is required for new users', 'warning');
+            showToast('Password is required for new users', 'warning');
             return;
         }
 
         if (formData.password && formData.password.length < 6) {
-            showAlert('Password must be at least 6 characters', 'warning');
+            showToast('Password must be at least 6 characters', 'warning');
             return;
         }
 
         try {
             if (modalMode === 'create') {
                 await api.post('/api/users', formData);
-                showAlert('User created successfully!', 'success');
+                showToast('User created successfully!', 'success');
             } else {
                 const updateData = { ...formData };
                 if (!updateData.password) {
                     delete updateData.password; // Don't send empty password
                 }
                 await api.put(`/api/users/${currentUser.id}`, updateData);
-                showAlert('User updated successfully!', 'success');
+                showToast('User updated successfully!', 'success');
             }
 
             closeModal();
@@ -106,7 +101,7 @@ const UserManagement = () => {
         } catch (error) {
             console.error('Error saving user:', error);
             const message = error.response?.data?.message || 'Failed to save user';
-            showAlert(message, 'error');
+            showToast(message, 'error');
         }
     };
 
@@ -117,18 +112,18 @@ const UserManagement = () => {
 
         try {
             await api.delete(`/api/users/${user.id}`);
-            showAlert('User deleted successfully!', 'success');
+            showToast('User deleted successfully!', 'success');
             loadUsers();
         } catch (error) {
             console.error('Error deleting user:', error);
             const message = error.response?.data?.message || 'Failed to delete user';
-            showAlert(message, 'error');
+            showToast(message, 'error');
         }
     };
 
     const formatDate = (dateString) => {
         if (!dateString) return 'Never';
-        return new Date(dateString).toLocaleString();
+        return new Date(dateString).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
     };
 
     return (
@@ -151,14 +146,6 @@ const UserManagement = () => {
                     </button>
                 </div>
             </div>
-
-            {alert && (
-                <Alert
-                    message={alert.message}
-                    type={alert.type}
-                    onClose={() => setAlert(null)}
-                />
-            )}
 
             {!hasLoaded ? (
                 <div style={{ textAlign: 'center', padding: '60px 20px' }}>

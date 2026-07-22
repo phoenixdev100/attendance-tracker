@@ -1,17 +1,12 @@
 import { useState } from 'react';
 import api from '../config/api';
-import Alert from './Alert';
+import { useToast } from '../hooks/useToast';
 
 const FileUpload = ({ onUploadSuccess }) => {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [alert, setAlert] = useState(null);
+  const { showToast } = useToast();
   const [uploadResult, setUploadResult] = useState(null);
-
-  const showAlert = (message, type) => {
-    setAlert({ message, type });
-    setTimeout(() => setAlert(null), 7000);
-  };
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -23,10 +18,7 @@ const FileUpload = ({ onUploadSuccess }) => {
       ];
 
       if (!validTypes.includes(selectedFile.type)) {
-        showAlert(
-          <span><span className="alert-icon">❌</span>Please select a valid Excel file (.xlsx or .xls)</span>,
-          'error'
-        );
+        showToast('Please select a valid Excel file (.xlsx or .xls)', 'error');
         return;
       }
 
@@ -37,10 +29,7 @@ const FileUpload = ({ onUploadSuccess }) => {
 
   const handleUpload = async () => {
     if (!file) {
-      showAlert(
-        <span><span className="alert-icon">📁</span>Please select an Excel file first</span>,
-        'info'
-      );
+      showToast('Please select an Excel file first', 'info');
       return;
     }
 
@@ -57,14 +46,7 @@ const FileUpload = ({ onUploadSuccess }) => {
 
       if (response.data.success) {
         setUploadResult(response.data);
-        showAlert(
-          <div>
-            <span className="alert-icon">✅</span>
-            <strong>Upload Successful!</strong><br />
-            {response.data.message}
-          </div>,
-          'success'
-        );
+        showToast(response.data.message || 'Upload successful', 'success');
         setFile(null);
         // Reset file input
         document.getElementById('fileInput').value = '';
@@ -78,15 +60,9 @@ const FileUpload = ({ onUploadSuccess }) => {
       console.error('Upload error:', error);
 
       if (error.response && error.response.data) {
-        showAlert(
-          <span><span className="alert-icon">❌</span>{error.response.data.message}</span>,
-          'error'
-        );
+        showToast(error.response.data.message, 'error');
       } else {
-        showAlert(
-          <span><span className="alert-icon">🌐</span>Network error. Please try again.</span>,
-          'error'
-        );
+        showToast('Network error. Please try again.', 'error');
       }
     } finally {
       setUploading(false);
@@ -175,13 +151,6 @@ const FileUpload = ({ onUploadSuccess }) => {
       )}
 
 
-      {alert && (
-        <Alert
-          message={alert.message}
-          type={alert.type}
-          onClose={() => setAlert(null)}
-        />
-      )}
     </div>
   );
 };

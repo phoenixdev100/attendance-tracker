@@ -12,15 +12,15 @@ import {
   Download,
 } from "lucide-react";
 import api from '../config/api';
-import Alert from './Alert';
+import { useToast } from '../hooks/useToast';
 
-const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav = false }) => {
+const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav = false, onAttendanceMarked }) => {
   const [systemId, setSystemId] = useState('');
   const [teamId, setTeamId] = useState('');
   const [inputType, setInputType] = useState('student'); // 'student' or 'team'
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [alert, setAlert] = useState(null);
   const [absentLoading, setAbsentLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [teamMembers, setTeamMembers] = useState([]);
@@ -30,34 +30,6 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
   const [studentInfo, setStudentInfo] = useState(null);
   const [showStudentDetails, setShowStudentDetails] = useState(false);
   const [teamFeatureEnabled, setTeamFeatureEnabled] = useState(true); // Default to true for admins
-  const [toast, setToast] = useState(null);
-
-
-  const showAlert = (message, type, duration = null) => {
-    setAlert({ message, type });
-
-    // Auto-hide certain alert types
-    if (duration || type === 'success' || type === 'info') {
-      setTimeout(() => {
-        setAlert(null);
-      }, duration || (type === 'success' ? 7000 : 7000));
-    } else if (type === 'warning') {
-      setTimeout(() => {
-        setAlert(null);
-      }, 10000);
-    }
-  };
-
-  const hideAlert = () => {
-    setAlert(null);
-  };
-
-  const showToast = (message, type = 'error') => {
-    setToast({ message, type });
-    setTimeout(() => {
-      setToast(null);
-    }, 3000);
-  };
 
   // Define handleTeamLookup before it's used in useEffect
   const handleTeamLookup = useCallback(async () => {
@@ -66,7 +38,6 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
     }
 
     setLoading(true);
-    hideAlert();
 
     try {
       const response = await api.get(`/api/team/${teamId.trim()}`);
@@ -94,7 +65,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
     } finally {
       setLoading(false);
     }
-  }, [teamId]);
+  }, [teamId, showToast]);
 
   // Define handleStudentLookup before it's used in useEffect
   const handleLogout = () => {
@@ -110,7 +81,6 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
     }
 
     setLoading(true);
-    hideAlert();
 
     try {
       const response = await api.get(`/api/student/${systemId.trim()}`);
@@ -134,7 +104,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
     } finally {
       setLoading(false);
     }
-  }, [systemId]);
+  }, [systemId, showToast]);
 
   useEffect(() => {
     // Focus on input when component mounts
@@ -211,10 +181,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
     const currentId = inputType === 'student' ? systemId.trim() : teamId.trim();
 
     if (!currentId) {
-      showAlert(
-        <span><span className="alert-icon">📝</span>Please enter a {inputType === 'student' ? 'student system ID' : 'team ID'}</span>,
-        'info'
-      );
+      showToast(`Please enter a ${inputType === 'student' ? 'student system ID' : 'team ID'}`, 'info');
       return;
     }
 
@@ -224,7 +191,6 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
     }
 
     setLoading(true);
-    hideAlert();
 
     try {
       const requestData = inputType === 'student'
@@ -242,36 +208,26 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
           const input = document.getElementById('systemId');
           if (input) input.focus();
         }, 100);
+
+        onAttendanceMarked?.();
       }
 
     } catch (error) {
-      console.error('Error:', error);
-
       if (error.response && error.response.data) {
         const data = error.response.data;
         let errorType = 'error';
-        let icon = '❌';
 
         if (error.response.status === 404) {
-          icon = '🔍';
           errorType = 'warning';
         } else if (error.response.status === 409) {
-          icon = '⚠️';
           errorType = 'warning';
         } else if (error.response.status === 400) {
-          icon = '📝';
           errorType = 'info';
         }
 
-        showAlert(
-          <span><span className="alert-icon">{icon}</span>{data.message}</span>,
-          errorType
-        );
+        showToast(data.message, errorType);
       } else {
-        showAlert(
-          <span><span className="alert-icon">🌐</span>Network error. Please check your connection and try again.</span>,
-          'error'
-        );
+        showToast('Network error. Please check your connection and try again.', 'error');
       }
     } finally {
       setLoading(false);
@@ -283,15 +239,11 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
     const trimmedId = systemId.trim();
 
     if (!trimmedId) {
-      showAlert(
-        <span><span className="alert-icon">📝</span>Please enter a student system ID to mark as absent</span>,
-        'info'
-      );
+      showToast('Please enter a student system ID to mark as absent', 'info');
       return;
     }
 
     setAbsentLoading(true);
-    hideAlert();
 
     try {
       const response = await api.post('/api/mark-absent', {
@@ -307,36 +259,26 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
           const input = document.getElementById('systemId');
           if (input) input.focus();
         }, 100);
+
+        onAttendanceMarked?.();
       }
 
     } catch (error) {
-      console.error('Error:', error);
-
       if (error.response && error.response.data) {
         const data = error.response.data;
         let errorType = 'error';
-        let icon = '❌';
 
         if (error.response.status === 404) {
-          icon = '🔍';
           errorType = 'warning';
         } else if (error.response.status === 409) {
-          icon = '⚠️';
           errorType = 'warning';
         } else if (error.response.status === 400) {
-          icon = '📝';
           errorType = 'info';
         }
 
-        showAlert(
-          <span><span className="alert-icon">{icon}</span>{data.message}</span>,
-          errorType
-        );
+        showToast(data.message, errorType);
       } else {
-        showAlert(
-          <span><span className="alert-icon">🌐</span>Network error. Please check your connection and try again.</span>,
-          'error'
-        );
+        showToast('Network error. Please check your connection and try again.', 'error');
       }
     } finally {
       setAbsentLoading(false);
@@ -364,17 +306,10 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
 
       window.URL.revokeObjectURL(url);
 
-      showAlert(
-        <span><span className="alert-icon">📊</span>Excel file downloaded successfully!</span>,
-        'success'
-      );
+      showToast('Excel file downloaded successfully', 'success');
 
     } catch (error) {
-      console.error('Error downloading Excel file:', error);
-      showAlert(
-        <span><span className="alert-icon">❌</span>Error downloading file. Please try again.</span>,
-        'error'
-      );
+      showToast('Error downloading file. Please try again.', 'error');
     } finally {
       setDownloading(false);
     }
@@ -398,7 +333,6 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
 
   const handleTeamAttendanceSubmit = async () => {
     setLoading(true);
-    hideAlert();
 
     try {
       const response = await api.post('/api/mark-team-attendance', {
@@ -408,32 +342,18 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
       });
 
       if (response.data.success) {
-        showAlert(
-          <div>
-            <span className="alert-icon">✅</span>
-            <strong>Team Attendance Updated!</strong><br />
-            {response.data.message}
-          </div>,
-          'success'
-        );
-        showToast('Team attendance updated', 'success');
+        showToast(response.data.message || 'Team attendance updated', 'success');
 
         // Refresh team data
         handleTeamLookup();
+
+        onAttendanceMarked?.();
       }
     } catch (error) {
-      console.error('Error updating team attendance:', error);
-
       if (error.response && error.response.data) {
-        showAlert(
-          <span><span className="alert-icon">❌</span>{error.response.data.message}</span>,
-          'error'
-        );
+        showToast(error.response.data.message, 'error');
       } else {
-        showAlert(
-          <span><span className="alert-icon">🌐</span>Network error. Please try again.</span>,
-          'error'
-        );
+        showToast('Network error. Please try again.', 'error');
       }
     } finally {
       setLoading(false);
@@ -450,16 +370,6 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
       <div className="absolute -bottom-40 -right-40 h-[450px] w-[450px] rounded-full bg-indigo-300/30 blur-3xl"></div>
 
       <div className="max-w-3xl mx-auto h-full flex flex-col relative">
-
-        {alert && (
-          <div className="mb-3 shrink-0">
-            <Alert
-              message={alert.message}
-              type={alert.type}
-              onClose={hideAlert}
-            />
-          </div>
-        )}
 
         {/* Card */}
         <div className="bg-white/80 backdrop-blur-xl rounded-[32px] shadow-2xl border border-white p-4 md:p-6 flex-1 flex flex-col overflow-hidden">
@@ -650,7 +560,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
                 </div>
                 {studentInfo.isPresentToday && studentInfo.recordedAt && (
                   <div className="text-sm mt-1">
-                    Recorded at: {new Date(studentInfo.recordedAt).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, month: 'short', day: 'numeric' })}
+                    Recorded at: {new Date(studentInfo.recordedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true, month: 'short', day: 'numeric' })}
                   </div>
                 )}
               </div>
@@ -730,13 +640,6 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
         </div>
 
       </div>
-
-      {/* Bottom-right toast */}
-      {toast && (
-        <div className={`fixed bottom-6 right-6 px-4 py-3 rounded-2xl shadow-lg text-sm font-medium z-50 ${toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-rose-500 text-slate-50'}`}>
-          {toast.message}
-        </div>
-      )}
 
     </div>
   );

@@ -1,26 +1,21 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Lock, LogIn } from "lucide-react";
+import { Mail, Lock, LogIn } from "lucide-react";
 import api from '../config/api';
-import Alert from './Alert';
+import { useToast } from '../hooks/useToast';
 
 const Login = ({ onLogin }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
-    const [alert, setAlert] = useState(null);
     const navigate = useNavigate();
-
-    const showAlert = (message, type) => {
-        setAlert({ message, type });
-        setTimeout(() => setAlert(null), 5000);
-    };
+    const { showToast } = useToast();
 
     const handleSubmit = async (e) => {
         e.preventDefault();
 
         if (!email || !password) {
-            showAlert('Please enter both email and password', 'warning');
+            showToast('Please enter both email and password', 'warning');
             return;
         }
 
@@ -42,14 +37,14 @@ const Login = ({ onLogin }) => {
                     navigate('/attendance');
                 }
 
-                showAlert('Login successful!', 'success');
+                showToast('Login successful!', 'success');
             } else {
-                showAlert(data.message || 'Invalid credentials', 'error');
+                showToast(data.message || 'Invalid credentials', 'error');
             }
         } catch (error) {
             console.error('Login error:', error);
             const message = error.response?.data?.message || 'Network error. Please try again.';
-            showAlert(message, 'error');
+            showToast(message, 'error');
         } finally {
             setLoading(false);
         }
@@ -83,7 +78,7 @@ const Login = ({ onLogin }) => {
                         </label>
 
                         <div className="flex items-center border rounded-xl px-4 py-3 focus-within:ring-2 focus-within:ring-blue-500">
-                            <User className="text-gray-400 mr-3" size={20} />
+                            <Mail className="text-gray-400 mr-3" size={20} />
                             <input
                                 type="email"
                                 placeholder="Enter your email"
@@ -127,13 +122,6 @@ const Login = ({ onLogin }) => {
                     </button>
                 </form>
 
-                {alert && (
-                    <Alert
-                        message={alert.message}
-                        type={alert.type}
-                        onClose={() => setAlert(null)}
-                    />
-                )}
             </div>
         </div>
     );

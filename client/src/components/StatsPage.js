@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../config/api';
-import Alert from './Alert';
+import { useToast } from '../hooks/useToast';
 
 const StatsPage = () => {
   const [stats, setStats] = useState(null);
@@ -9,10 +9,12 @@ const StatsPage = () => {
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const { showToast } = useToast();
 
   const formatDate = (dateString) => {
     const date = new Date(dateString + 'T00:00:00');
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString('en-IN', {
+      timeZone: 'Asia/Kolkata',
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -20,22 +22,23 @@ const StatsPage = () => {
     });
   };
 
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
       const response = await api.get('/api/today-stats');
       setStats(response.data);
-      setLastUpdated(new Date().toLocaleTimeString());
+      setLastUpdated(new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }));
 
     } catch (error) {
       console.error('Error loading stats:', error);
       setError('Failed to load statistics. Please check your connection and try again.');
+      showToast('Failed to load statistics. Please check your connection and try again.', 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [showToast]);
 
   useEffect(() => {
     loadStats();
@@ -60,7 +63,7 @@ const StatsPage = () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [loadStats]);
 
   const refreshStats = () => {
     loadStats();
@@ -77,15 +80,15 @@ const StatsPage = () => {
       if (response.data.success) {
         // Refresh stats to update the list
         loadStats();
-        alert(`${studentName} has been marked as absent successfully.`);
+        showToast(`${studentName} has been marked as absent successfully.`, 'success');
       }
     } catch (error) {
       console.error('Error marking student absent:', error);
 
       if (error.response && error.response.data) {
-        alert(`Error: ${error.response.data.message}`);
+        showToast(error.response.data.message, 'error');
       } else {
-        alert('Network error. Please try again.');
+        showToast('Network error. Please try again.', 'error');
       }
     }
   };
@@ -117,7 +120,7 @@ const StatsPage = () => {
 
     } catch (error) {
       console.error('Error downloading Excel file:', error);
-      alert('Error downloading file. Please try again.');
+      showToast('Error downloading file. Please try again.', 'error');
     } finally {
       setDownloading(false);
     }
@@ -154,11 +157,9 @@ const StatsPage = () => {
               <h1 className="main-title">📊 Attendance Stats</h1>
             </div>
           </div>
-          <Alert
-            message={error}
-            type="error"
-            onClose={() => setError(null)}
-          />
+          <div className="error-message" style={{ color: '#dc2626', padding: '15px', textAlign: 'center' }}>
+            {error}
+          </div>
           <div className="actions">
             <Link to="/" className="nav-link">
               ← Mark Attendance
@@ -238,7 +239,8 @@ const StatsPage = () => {
                         <div className="student-status">
                           <span className="status-badge present">✓ Present</span>
                           <div className="recorded-time">
-                            {new Date(student.recorded_at).toLocaleTimeString('en-US', {
+                            {new Date(student.recorded_at).toLocaleTimeString('en-IN', {
+                              timeZone: 'Asia/Kolkata',
                               hour: '2-digit',
                               minute: '2-digit',
                               hour12: true

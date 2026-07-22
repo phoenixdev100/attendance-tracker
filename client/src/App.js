@@ -3,12 +3,13 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Login from './components/Login';
 import Home from './components/Home';
 import AdminDashboard from './components/AdminDashboard';
-import UserDashboard from './components/UserDashboard';
+import PasscodeGate from './components/PasscodeGate';
 import AttendanceForm from './components/AttendanceForm';
 import StatsPage from './components/StatsPage';
 import UserManagement from './components/UserManagement';
-import SettingsManagement from './components/SettingsManagement';
+import SettingsPage from './components/SettingsPage';
 import './App.css';
+import { ToastProvider } from './hooks/useToast';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -47,9 +48,10 @@ function App() {
   }
 
   return (
-    <Router>
-      <div className="App">
-        <Routes>
+    <ToastProvider>
+      <Router>
+        <div className="App">
+          <Routes>
           {/* Public route */}
           <Route
             path="/login"
@@ -81,7 +83,7 @@ function App() {
                 user.role === 'admin' ? (
                   <AttendanceForm user={user} onLogout={handleLogout} showAdminNav={true} />
                 ) : (
-                  <UserDashboard user={user} onLogout={handleLogout} />
+                  <PasscodeGate user={user} onLogout={handleLogout} />
                 )
               ) : (
                 <Navigate to="/login" replace />
@@ -104,11 +106,7 @@ function App() {
             path="/settings"
             element={
               user && user.role === 'admin' ? (
-                <div className="container">
-                  <div className="card" style={{ maxWidth: '900px' }}>
-                    <SettingsManagement />
-                  </div>
-                </div>
+                <SettingsPage />
               ) : (
                 <Navigate to="/login" replace />
               )
@@ -157,6 +155,7 @@ function App() {
         </Routes>
       </div>
     </Router>
+    </ToastProvider>
   );
 }
 

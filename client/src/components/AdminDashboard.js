@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users,
@@ -15,36 +15,35 @@ import {
   RefreshCw,
 } from "lucide-react";
 import api from '../config/api';
-import Alert from './Alert';
+import { useToast } from '../hooks/useToast';
 
 const AdminDashboard = ({ user, onLogout }) => {
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
     const [lastUpdated, setLastUpdated] = useState(null);
     const [, setDownloading] = useState(false);
     const [hasLoaded, setHasLoaded] = useState(false);
     const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
     const hasLoadedRef = useRef(false);
     const navigate = useNavigate();
+    const { showToast } = useToast();
 
-    const loadStats = async () => {
+    const loadStats = useCallback(async () => {
         try {
             setLoading(true);
-            setError(null);
 
             const response = await api.get('/api/today-stats');
             setStats(response.data);
-            setLastUpdated(new Date().toLocaleTimeString());
+            setLastUpdated(new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }));
             setHasLoaded(true);
 
         } catch (error) {
             console.error('Error loading stats:', error);
-            setError('Failed to load statistics. Please check your connection and try again.');
+            showToast('Failed to load statistics. Please check your connection and try again.', 'error');
         } finally {
             setLoading(false);
         }
-    };
+    }, [showToast]);
 
     useEffect(() => {
         if (!user || user.role !== 'admin') {
@@ -69,7 +68,7 @@ const AdminDashboard = ({ user, onLogout }) => {
         return () => {
             if (interval) clearInterval(interval);
         };
-    }, [user, navigate, autoRefreshEnabled, hasLoaded]);
+    }, [user, navigate, autoRefreshEnabled, hasLoaded, loadStats]);
 
     const handleLogout = () => {
         localStorage.removeItem('user');
@@ -101,7 +100,7 @@ const AdminDashboard = ({ user, onLogout }) => {
 
         } catch (error) {
             console.error('Error downloading Excel file:', error);
-            alert('Error downloading file. Please try again.');
+            showToast('Error downloading file. Please try again.', 'error');
         } finally {
             setDownloading(false);
         }
@@ -188,20 +187,11 @@ const AdminDashboard = ({ user, onLogout }) => {
 
             <div className="w-full h-full flex flex-col">
 
-                {error && (
-                    <div className="mb-6">
-                        <Alert
-                            message={error}
-                            type="error"
-                            onClose={() => setError(null)}
-                        />
-                    </div>
-                )}
 
                 {/* Header */}
-                <div className="bg-white rounded-3xl shadow-xl p-6 flex-1 flex flex-col overflow-hidden">
+                <div className="bg-white rounded-3xl shadow-xl p-6 flex-1 flex flex-col overflow-y-auto">
 
-                    <div className="flex flex-col items-center">
+                    <div className="flex flex-col items-center shrink-0">
 
                         <img
                             src={`https://api.dicebear.com/7.x/initials/svg?seed=${user?.username || 'Admin'}`}
@@ -250,7 +240,7 @@ const AdminDashboard = ({ user, onLogout }) => {
                     </div>
 
                     {/* Attendance */}
-                    <div className="mt-6 bg-white border rounded-3xl p-6 shadow-sm">
+                    <div className="mt-6 bg-white border rounded-3xl p-6 shadow-sm shrink-0">
 
                         <div className="flex justify-between items-center mb-8">
 
@@ -262,7 +252,7 @@ const AdminDashboard = ({ user, onLogout }) => {
 
                                 <CalendarDays size={20} />
 
-                                {new Date().toLocaleDateString()}
+                                {new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}
 
                             </div>
 

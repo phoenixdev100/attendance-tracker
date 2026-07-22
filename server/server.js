@@ -1,3 +1,5 @@
+process.env.TZ = 'Asia/Kolkata';
+
 const express = require('express');
 const { Pool } = require('pg');
 const path = require('path');
@@ -66,6 +68,11 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+// Set timezone to Asia/Kolkata for all new DB connections
+pool.on('connect', (client) => {
+  client.query('SET TIME ZONE \'Asia/Kolkata\'');
+});
+
 // Test database connection
 pool.connect((err, client, release) => {
   if (err) {
@@ -78,8 +85,7 @@ pool.connect((err, client, release) => {
 
 // Helper function to get today's date in YYYY-MM-DD format
 const getTodayDate = () => {
-  const today = new Date();
-  return today.toISOString().split('T')[0];
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 };
 
 // Initialize database with teams and sample data
@@ -89,7 +95,7 @@ const initializeDatabase = async () => {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
-        username VARCHAR(50) UNIQUE NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
         password VARCHAR(255) NOT NULL,
         role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'user')),
         name VARCHAR(100) NOT NULL,
@@ -165,6 +171,24 @@ const initializeDatabase = async () => {
       // console.log('✅ Default settings initialized');
     }
 
+    const passcodeCheck = await pool.query('SELECT COUNT(*) as count FROM settings WHERE setting_key = $1', ['attendance_passcode']);
+
+    if (parseInt(passcodeCheck.rows[0].count) === 0) {
+      await pool.query(`
+        INSERT INTO settings (setting_key, setting_value, description) 
+        VALUES ($1, $2, $3)
+      `, ['attendance_passcode', '', 'Daily passcode required for regular users to mark attendance']);
+    }
+
+    const passcodeExpiryCheck = await pool.query('SELECT COUNT(*) as count FROM settings WHERE setting_key = $1', ['attendance_passcode_expires_at']);
+
+    if (parseInt(passcodeExpiryCheck.rows[0].count) === 0) {
+      await pool.query(`
+        INSERT INTO settings (setting_key, setting_value, description) 
+        VALUES ($1, $2, $3)
+      `, ['attendance_passcode_expires_at', '', 'Expiry timestamp for the daily attendance passcode']);
+    }
+
     // Seed demo users if they don't exist
     const bcrypt = require('bcryptjs');
 
@@ -180,15 +204,15 @@ const initializeDatabase = async () => {
 
       // Insert admin user
       await pool.query(`
-        INSERT INTO users (username, password, role, name) 
+        INSERT INTO users (email, password, role, name) 
         VALUES ($1, $2, $3, $4)
-      `, ['admin', adminPassword, 'admin', 'Administrator']);
+      `, ['admin@example.com', adminPassword, 'admin', 'Administrator']);
 
       // Insert regular user
       await pool.query(`
-        INSERT INTO users (username, password, role, name) 
+        INSERT INTO users (email, password, role, name) 
         VALUES ($1, $2, $3, $4)
-      `, ['user', userPassword, 'user', 'Regular User']);
+      `, ['user@example.com', userPassword, 'user', 'Regular User']);
 
       // console.log('✅ Demo users created successfully!');
       // console.log('   Admin: username=admin, password=admin123');
@@ -254,14 +278,14 @@ app.post('/api/login', async (req, res) => {
   try {
     const bcrypt = require('bcryptjs');
 
-    // Query database for user using email (stored in username column)
-    const userQuery = 'SELECT * FROM users WHERE username = $1';
+    // Query database for user using email
+    const userQuery = 'SELECT * FROM users WHERE email = $1';
     const result = await pool.query(userQuery, [email.toLowerCase()]);
 
     if (result.rows.length === 0) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid username or password'
+        message: 'Invalid email or password'
       });
     }
 
@@ -273,7 +297,7 @@ app.post('/api/login', async (req, res) => {
     if (!passwordMatch) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid username or password'
+        message: 'Invalid email or password'
       });
     }
 
@@ -289,7 +313,8 @@ app.post('/api/login', async (req, res) => {
     // Return user info (excluding password)
     const userResponse = {
       id: user.id,
-      username: user.username,
+      email: user.email,
+      username: user.email,
       role: user.role,
       name: user.name
     };
@@ -316,7 +341,7 @@ app.post('/api/login', async (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, username, role, name, created_at, last_login FROM users ORDER BY created_at DESC'
+      'SELECT id, email AS username, role, name, created_at, last_login FROM users ORDER BY created_at DESC'
     );
 
     res.json({
@@ -338,7 +363,7 @@ app.get('/api/users/:id', async (req, res) => {
 
   try {
     const result = await pool.query(
-      'SELECT id, username, role, name, created_at, last_login FROM users WHERE id = $1',
+      'SELECT id, email AS username, role, name, created_at, last_login FROM users WHERE id = $1',
       [id]
     );
 
@@ -370,7 +395,7 @@ app.post('/api/users', async (req, res) => {
   if (!username || !password || !role || !name) {
     return res.status(400).json({
       success: false,
-      message: 'All fields are required: username, password, role, name'
+      message: 'All fields are required: email, password, role, name'
     });
   }
 
@@ -391,16 +416,16 @@ app.post('/api/users', async (req, res) => {
   try {
     const bcrypt = require('bcryptjs');
 
-    // Check if username already exists
+    // Check if email already exists
     const existingUser = await pool.query(
-      'SELECT id FROM users WHERE username = $1',
+      'SELECT id FROM users WHERE email = $1',
       [username.toLowerCase()]
     );
 
     if (existingUser.rows.length > 0) {
       return res.status(409).json({
         success: false,
-        message: 'Username already exists'
+        message: 'Email already exists'
       });
     }
 
@@ -409,7 +434,7 @@ app.post('/api/users', async (req, res) => {
 
     // Insert new user
     const result = await pool.query(
-      'INSERT INTO users (username, password, role, name) VALUES ($1, $2, $3, $4) RETURNING id, username, role, name, created_at',
+      'INSERT INTO users (email, password, role, name) VALUES ($1, $2, $3, $4) RETURNING id, email AS username, role, name, created_at',
       [username.toLowerCase(), hashedPassword, role, name]
     );
 
@@ -436,7 +461,7 @@ app.put('/api/users/:id', async (req, res) => {
   if (!username || !role || !name) {
     return res.status(400).json({
       success: false,
-      message: 'Username, role, and name are required'
+      message: 'Email, role, and name are required'
     });
   }
 
@@ -467,16 +492,16 @@ app.put('/api/users/:id', async (req, res) => {
       });
     }
 
-    // Check if new username conflicts with another user
+    // Check if new email conflicts with another user
     const usernameCheck = await pool.query(
-      'SELECT id FROM users WHERE username = $1 AND id != $2',
+      'SELECT id FROM users WHERE email = $1 AND id != $2',
       [username.toLowerCase(), id]
     );
 
     if (usernameCheck.rows.length > 0) {
       return res.status(409).json({
         success: false,
-        message: 'Username already exists'
+        message: 'Email already exists'
       });
     }
 
@@ -486,11 +511,11 @@ app.put('/api/users/:id', async (req, res) => {
     if (password) {
       // Update with new password
       const hashedPassword = await bcrypt.hash(password, 10);
-      query = 'UPDATE users SET username = $1, password = $2, role = $3, name = $4 WHERE id = $5 RETURNING id, username, role, name, created_at, last_login';
+      query = 'UPDATE users SET email = $1, password = $2, role = $3, name = $4 WHERE id = $5 RETURNING id, email AS username, role, name, created_at, last_login';
       params = [username.toLowerCase(), hashedPassword, role, name, id];
     } else {
       // Update without changing password
-      query = 'UPDATE users SET username = $1, role = $2, name = $3 WHERE id = $4 RETURNING id, username, role, name, created_at, last_login';
+      query = 'UPDATE users SET email = $1, role = $2, name = $3 WHERE id = $4 RETURNING id, email AS username, role, name, created_at, last_login';
       params = [username.toLowerCase(), role, name, id];
     }
 
@@ -516,7 +541,7 @@ app.delete('/api/users/:id', async (req, res) => {
 
   try {
     // Check if user exists
-    const existingUser = await pool.query('SELECT id, username FROM users WHERE id = $1', [id]);
+    const existingUser = await pool.query('SELECT id, email AS username FROM users WHERE id = $1', [id]);
 
     if (existingUser.rows.length === 0) {
       return res.status(404).json({
@@ -562,6 +587,7 @@ app.get('/api/settings', async (req, res) => {
     // Convert to key-value object for easier frontend use
     const settings = {};
     result.rows.forEach(row => {
+      if (row.setting_key === 'attendance_passcode') return;
       settings[row.setting_key] = {
         value: row.setting_value === 'true' ? true : row.setting_value === 'false' ? false : row.setting_value,
         description: row.description,
@@ -585,6 +611,13 @@ app.get('/api/settings', async (req, res) => {
 // GET single setting by key
 app.get('/api/settings/:key', async (req, res) => {
   const { key } = req.params;
+
+  if (key === 'attendance_passcode') {
+    return res.status(403).json({
+      success: false,
+      message: 'Forbidden'
+    });
+  }
 
   try {
     const result = await pool.query('SELECT * FROM settings WHERE setting_key = $1', [key]);
@@ -656,6 +689,171 @@ app.put('/api/settings/:key', async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating setting:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
+    });
+  }
+});
+
+// ==================== PASSCODE ENDPOINTS ====================
+
+// POST validate attendance passcode
+app.post('/api/validate-passcode', async (req, res) => {
+  const { passcode } = req.body;
+
+  if (!passcode || typeof passcode !== 'string') {
+    return res.status(400).json({
+      success: false,
+      message: 'Passcode is required'
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      'SELECT setting_key, setting_value FROM settings WHERE setting_key IN ($1, $2)',
+      ['attendance_passcode', 'attendance_passcode_expires_at']
+    );
+
+    const settings = {};
+    result.rows.forEach(row => {
+      settings[row.setting_key] = row.setting_value;
+    });
+
+    const currentPasscode = settings.attendance_passcode || '';
+
+    if (!currentPasscode) {
+      return res.json({
+        success: true,
+        valid: false,
+        message: 'No passcode set'
+      });
+    }
+
+    const expiresAt = settings.attendance_passcode_expires_at;
+    const isExpired = expiresAt ? new Date() > new Date(expiresAt) : false;
+
+    if (passcode.trim() !== currentPasscode) {
+      return res.json({
+        success: true,
+        valid: false,
+        message: 'Invalid passcode'
+      });
+    }
+
+    if (isExpired) {
+      return res.json({
+        success: true,
+        valid: false,
+        message: 'Passcode expired'
+      });
+    }
+
+    res.json({
+      success: true,
+      valid: true,
+      message: 'Passcode valid',
+      expiresAt: expiresAt
+    });
+
+  } catch (error) {
+    console.error('Error validating passcode:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
+    });
+  }
+});
+
+// GET current admin passcode
+app.get('/api/admin/passcode', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT setting_key, setting_value, updated_at FROM settings WHERE setting_key IN ($1, $2)',
+      ['attendance_passcode', 'attendance_passcode_expires_at']
+    );
+
+    const settings = {};
+    result.rows.forEach(row => {
+      settings[row.setting_key] = row;
+    });
+
+    const passcodeRow = settings.attendance_passcode;
+    const expiresAtRow = settings.attendance_passcode_expires_at;
+
+    if (!passcodeRow) {
+      return res.json({
+        success: true,
+        passcode: ''
+      });
+    }
+
+    const passcode = passcodeRow.setting_value;
+    const expiresAt = expiresAtRow ? expiresAtRow.setting_value : null;
+    const isExpired = expiresAt ? new Date() > new Date(expiresAt) : false;
+
+    res.json({
+      success: true,
+      passcode: passcode,
+      expiresAt: expiresAt,
+      updatedAt: passcodeRow.updated_at,
+      isExpired: isExpired
+    });
+
+  } catch (error) {
+    console.error('Error fetching passcode:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
+    });
+  }
+});
+
+// POST set admin passcode
+app.post('/api/admin/passcode', async (req, res) => {
+  const { passcode } = req.body;
+
+  if (passcode === undefined || passcode === null) {
+    return res.status(400).json({
+      success: false,
+      message: 'Passcode is required'
+    });
+  }
+
+  try {
+    const trimmedPasscode = passcode.toString().trim();
+    const expiresAt = trimmedPasscode
+      ? new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
+      : '';
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'UPDATE settings SET setting_value = $1, updated_at = CURRENT_TIMESTAMP WHERE setting_key = $2',
+        [trimmedPasscode, 'attendance_passcode']
+      );
+      await client.query(
+        'UPDATE settings SET setting_value = $1, updated_at = CURRENT_TIMESTAMP WHERE setting_key = $2',
+        [expiresAt, 'attendance_passcode_expires_at']
+      );
+      await client.query('COMMIT');
+
+      res.json({
+        success: true,
+        message: 'Passcode updated successfully',
+        passcode: trimmedPasscode,
+        expiresAt: expiresAt
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+  } catch (error) {
+    console.error('Error updating passcode:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error. Please try again later.'
@@ -854,7 +1052,7 @@ app.get('/api/today-stats', async (req, res) => {
     // Get list of present students with details
     const presentStudentsQuery = `
       SELECT s.system_id, s.name, s.dept, a.recorded_at, a.marked_by,
-             u.username as marked_by_username, u.name as marked_by_name,
+             u.email as marked_by_email, u.name as marked_by_name,
              STRING_AGG(DISTINCT t.team_id, ', ') as team_ids,
              STRING_AGG(DISTINCT t.team_name, ', ') as team_names
       FROM students s
@@ -863,7 +1061,7 @@ app.get('/api/today-stats', async (req, res) => {
       LEFT JOIN student_teams st ON s.system_id = st.student_id
       LEFT JOIN teams t ON st.team_id = t.team_id
       WHERE a.date = $1 AND a.present = true
-      GROUP BY s.system_id, s.name, s.dept, a.recorded_at, a.marked_by, u.username, u.name
+      GROUP BY s.system_id, s.name, s.dept, a.recorded_at, a.marked_by, u.email, u.name
       ORDER BY a.recorded_at ASC
     `;
     const presentStudentsResult = await pool.query(presentStudentsQuery, [today]);
@@ -1232,7 +1430,7 @@ app.get('/api/student/:systemId', async (req, res) => {
 
 // API endpoint for batch attendance marking (team attendance with individual selection)
 app.post('/api/mark-team-attendance', async (req, res) => {
-  const { teamId, selectedStudents } = req.body;
+  const { teamId, selectedStudents, userId } = req.body;
 
   // Input validation
   if (!teamId || !Array.isArray(selectedStudents)) {
@@ -1290,17 +1488,17 @@ app.post('/api/mark-team-attendance', async (req, res) => {
             // Update existing record
             const updateQuery = `
               UPDATE attendance 
-              SET present = $1, recorded_at = CURRENT_TIMESTAMP 
+              SET present = $1, recorded_at = CURRENT_TIMESTAMP, marked_by = $4 
               WHERE student_id = $2 AND date = $3
             `;
-            await client.query(updateQuery, [isSelected, member.system_id, today]);
+            await client.query(updateQuery, [isSelected, member.system_id, today, userId || null]);
           } else {
             // Insert new record
             const insertQuery = `
-              INSERT INTO attendance (student_id, date, present, recorded_at) 
-              VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+              INSERT INTO attendance (student_id, date, present, recorded_at, marked_by) 
+              VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4)
             `;
-            await client.query(insertQuery, [member.system_id, today, isSelected]);
+            await client.query(insertQuery, [member.system_id, today, isSelected, userId || null]);
           }
 
           if (isSelected) {
@@ -1525,7 +1723,7 @@ app.get('/api/export-excel', async (req, res) => {
       'Student Name': row.name,
       'Department': row.dept || 'Not Set',
       'Status': row.present === null ? 'No Record' : (row.present ? 'Present' : 'Absent'),
-      'Recorded At': row.recorded_at ? new Date(row.recorded_at).toLocaleString('en-US') : 'N/A'
+      'Recorded At': row.recorded_at ? new Date(row.recorded_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'N/A'
     }));
 
     // Create workbook and worksheet
@@ -1550,7 +1748,7 @@ app.get('/api/export-excel', async (req, res) => {
     const buffer = await wb.xlsx.writeBuffer();
 
     // Set headers for file download
-    const filename = `attendance_records_${new Date().toISOString().split('T')[0]}.xlsx`;
+    const filename = `attendance_records_${getTodayDate()}.xlsx`;
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 

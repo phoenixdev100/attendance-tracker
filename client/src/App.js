@@ -129,7 +129,7 @@ function App() {
           />
 
           {/* Landing page - public route */}
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<Home user={user} onLogout={handleLogout} />} />
 
           {/* User routes */}
           <Route

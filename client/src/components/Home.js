@@ -6,12 +6,16 @@ import {
   BarChart3,
   ArrowRight,
   Laptop,
+  User,
+  LogOut,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import './Home.css';
 
-export default function Home() {
+export default function Home({ user, onLogout }) {
   const navigate = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100">
@@ -24,12 +28,47 @@ export default function Home() {
           </div>
           <span className="text-xl font-bold text-gray-800">Smart Attendance</span>
         </div>
-        <button
-          onClick={() => navigate('/login')}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-semibold transition"
-        >
-          Login
-        </button>
+        {user ? (
+          <div className="relative">
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center hover:bg-blue-200 transition"
+            >
+              <User className="text-blue-600" size={20} />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 mt-2 w-40 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden py-1 z-50">
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    navigate(user.role === 'admin' ? '/admin' : '/attendance');
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-blue-50 transition"
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onLogout();
+                    navigate('/login');
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition flex items-center gap-2"
+                >
+                  <LogOut size={14} />
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={() => navigate('/login')}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-semibold transition"
+          >
+            Login
+          </button>
+        )}
       </nav>
 
       {/* Hero Section */}

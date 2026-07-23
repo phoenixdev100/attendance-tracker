@@ -10,6 +10,9 @@ import {
   CalendarCheck2,
   BadgeInfo,
   Download,
+  ClipboardCheck,
+  X,
+  RefreshCw,
 } from "lucide-react";
 import api from '../config/api';
 import { useToast } from '../hooks/useToast';
@@ -30,6 +33,11 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
   const [studentInfo, setStudentInfo] = useState(null);
   const [showStudentDetails, setShowStudentDetails] = useState(false);
   const [teamFeatureEnabled, setTeamFeatureEnabled] = useState(true); // Default to true for admins
+  const [markedCount, setMarkedCount] = useState(0);
+  const [showAdminMarkedList, setShowAdminMarkedList] = useState(false);
+  const [adminMarkedStudents, setAdminMarkedStudents] = useState([]);
+  const [adminStats, setAdminStats] = useState(null);
+  const [adminLoading, setAdminLoading] = useState(false);
 
   // Define handleTeamLookup before it's used in useEffect
   const handleTeamLookup = useCallback(async () => {
@@ -75,6 +83,31 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
     navigate('/login');
   };
 
+  const loadAdminMarkedStudents = useCallback(async () => {
+    if (!user?.id || user?.role !== 'admin') return;
+
+    try {
+      setAdminLoading(true);
+      const response = await api.get(`/api/user-stats/${user.id}`);
+      if (response.data) {
+        setAdminStats(response.data);
+        setAdminMarkedStudents(response.data.markedStudents || []);
+      }
+    } catch (error) {
+      console.error('Error loading marked students:', error);
+    } finally {
+      setAdminLoading(false);
+    }
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      loadAdminMarkedStudents();
+      const interval = setInterval(loadAdminMarkedStudents, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user, loadAdminMarkedStudents]);
+
   const handleStudentLookup = useCallback(async () => {
     if (!systemId.trim()) {
       return;
@@ -111,6 +144,19 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
     const input = document.getElementById('idInput');
     if (input) input.focus();
   }, [inputType]);
+
+  // Load today's marked attendance count for admin
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      const today = new Date().toISOString().split('T')[0];
+      const saved = localStorage.getItem(`attendanceCount_${today}_${user?.id}`);
+      if (saved) {
+        setMarkedCount(parseInt(saved, 10) || 0);
+      } else {
+        setMarkedCount(0);
+      }
+    }
+  }, [user]);
 
   // Load settings to check if team feature is enabled
   useEffect(() => {
@@ -203,6 +249,15 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
         showToast('Attendance marked successfully', 'success');
         setSystemId(''); // Clear input on success
 
+        // Update today's marked count for admin
+        if (user?.role === 'admin') {
+          const today = new Date().toISOString().split('T')[0];
+          const key = `attendanceCount_${today}_${user?.id}`;
+          const newCount = markedCount + 1;
+          setMarkedCount(newCount);
+          localStorage.setItem(key, newCount.toString());
+        }
+
         // Focus back on input
         setTimeout(() => {
           const input = document.getElementById('systemId');
@@ -253,6 +308,15 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
       if (response.data.success) {
         showToast('Attendance Updated', 'success');
         setSystemId(''); // Clear input on success
+
+        // Update today's marked count for admin
+        if (user?.role === 'admin') {
+          const today = new Date().toISOString().split('T')[0];
+          const key = `attendanceCount_${today}_${user?.id}`;
+          const newCount = markedCount + 1;
+          setMarkedCount(newCount);
+          localStorage.setItem(key, newCount.toString());
+        }
 
         // Focus back on input
         setTimeout(() => {
@@ -344,6 +408,16 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
       if (response.data.success) {
         showToast(response.data.message || 'Team attendance updated', 'success');
 
+        // Update today's marked count for admin
+        if (user?.role === 'admin') {
+          const today = new Date().toISOString().split('T')[0];
+          const key = `attendanceCount_${today}_${user?.id}`;
+          const added = selectedMembers.length;
+          const newCount = markedCount + added;
+          setMarkedCount(newCount);
+          localStorage.setItem(key, newCount.toString());
+        }
+
         // Refresh team data
         handleTeamLookup();
 
@@ -363,16 +437,16 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
 
 
   return (
-    <div className="h-screen w-full bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden p-4">
+    <div className="h-screen w-full bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden p-3 sm:p-4">
 
       {/* Background */}
-      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-blue-200/40 blur-3xl"></div>
-      <div className="absolute -bottom-40 -right-40 h-[450px] w-[450px] rounded-full bg-indigo-300/30 blur-3xl"></div>
+      <div className="absolute -top-40 -left-40 h-64 w-64 sm:h-96 sm:w-96 rounded-full bg-blue-200/40 blur-3xl"></div>
+      <div className="absolute -bottom-40 -right-40 h-80 w-80 sm:h-[450px] sm:w-[450px] rounded-full bg-indigo-300/30 blur-3xl"></div>
 
-      <div className="max-w-3xl mx-auto h-full flex flex-col relative">
+      <div className="max-w-3xl mx-auto h-full flex flex-col relative w-full">
 
         {/* Card */}
-        <div className="bg-white/80 backdrop-blur-xl rounded-[32px] shadow-2xl border border-white p-4 md:p-6 flex-1 flex flex-col overflow-hidden">
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl sm:rounded-[32px] shadow-2xl border border-white p-3 sm:p-4 md:p-6 flex-1 flex flex-col overflow-hidden">
 
           {/* Top bar: actions in corners, icon centered */}
           <div className="relative flex items-center justify-between shrink-0">
@@ -382,20 +456,20 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
               {showAdminNav ? (
                 <button
                   onClick={() => navigate('/admin')}
-                  className="border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white transition px-4 py-2 rounded-xl font-semibold flex items-center gap-2 text-sm"
+                  className="border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white transition px-2 sm:px-4 py-2 rounded-lg sm:rounded-xl font-semibold flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
                 >
-                  <ArrowLeft />
-                  Dashboard
+                  <ArrowLeft size={16} />
+                  <span className="hidden sm:inline">Dashboard</span>
                 </button>
               ) : (
                 !isUserDashboard && (
                   <button
                     onClick={handleDownloadExcel}
                     disabled={downloading || loading || absentLoading}
-                    className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white px-4 py-2 rounded-xl shadow-lg font-semibold flex items-center gap-2 text-sm transition"
+                    className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white px-2 sm:px-4 py-2 rounded-lg sm:rounded-xl shadow-lg font-semibold flex items-center gap-1 sm:gap-2 text-xs sm:text-sm transition"
                   >
-                    <Download />
-                    {downloading ? '...' : 'Excel'}
+                    <Download size={16} />
+                    {downloading ? '...' : <span className="hidden sm:inline">Excel</span>}
                   </button>
                 )
               )}
@@ -403,18 +477,18 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
 
             {/* Center icon */}
             <div className="absolute left-1/2 -translate-x-1/2 top-0">
-              <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center">
-                <CalendarCheck2 className="text-blue-600" size={32} />
+              <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-blue-100 flex items-center justify-center">
+                <CalendarCheck2 className="text-blue-600" size={24} />
               </div>
             </div>
 
             {/* Right action */}
             <button
               onClick={handleLogout}
-              className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl shadow-lg font-semibold flex items-center gap-2 text-sm"
+              className="bg-orange-500 hover:bg-orange-600 text-white px-2 sm:px-4 py-2 rounded-lg sm:rounded-xl shadow-lg font-semibold flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
             >
-              Logout
-              <LogOut />
+              <span className="hidden sm:inline">Logout</span>
+              <LogOut size={16} />
             </button>
 
           </div>
@@ -422,64 +496,78 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
           {/* Header */}
           <div className="flex flex-col items-center mt-2">
 
-            <h1 className="mt-3 text-3xl font-bold text-slate-800">
+            <h1 className="mt-2 sm:mt-3 text-2xl sm:text-3xl font-bold text-slate-800 text-center">
               Attendance Tracker
             </h1>
 
-            <p className="mt-2 text-base text-slate-500">
+            <p className="mt-1 sm:mt-2 text-sm sm:text-base text-slate-500 text-center px-2">
               Mark attendance quickly and accurately
             </p>
 
-            <div className="w-16 h-1 rounded-full bg-blue-600 mt-3"></div>
+            <div className="w-12 sm:w-16 h-1 rounded-full bg-blue-600 mt-2 sm:mt-3"></div>
+
+            {user?.role === 'admin' && (
+              <div className="mt-3 flex items-center gap-2 bg-blue-50 px-3 sm:px-4 py-2 rounded-xl border border-blue-100">
+                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                  <ClipboardCheck className="text-blue-600" size={16} />
+                </div>
+                <div className="text-sm sm:text-base">
+                  <span className="font-bold text-slate-800">{markedCount}</span>
+                  <span className="text-slate-500 ml-1">marked today</span>
+                </div>
+              </div>
+            )}
 
           </div>
 
           {/* Toggle */}
           {teamFeatureEnabled && (
-            <div className="mt-4 grid grid-cols-2 rounded-2xl overflow-hidden border">
+            <div className="mt-3 sm:mt-4 grid grid-cols-2 rounded-2xl overflow-hidden border">
               <button
                 onClick={() => setInputType('student')}
-                className={`py-2 font-semibold flex justify-center items-center gap-2 transition ${
+                className={`py-2 font-semibold flex justify-center items-center gap-1 sm:gap-2 transition text-xs sm:text-sm ${
                   inputType === 'student'
                     ? 'bg-blue-600 text-white'
                     : 'bg-white hover:bg-blue-50'
                 }`}
               >
-                <User size={20} />
-                Individual Student
+                <User size={16} />
+                <span className="hidden sm:inline">Individual Student</span>
+                <span className="sm:hidden">Student</span>
               </button>
 
               <button
                 onClick={() => setInputType('team')}
-                className={`py-2 font-semibold flex justify-center items-center gap-2 transition ${
+                className={`py-2 font-semibold flex justify-center items-center gap-1 sm:gap-2 transition text-xs sm:text-sm ${
                   inputType === 'team'
                     ? 'bg-blue-600 text-white'
                     : 'bg-white hover:bg-blue-50'
                 }`}
               >
-                <Users size={20} />
-                Entire Team
+                <Users size={16} />
+                <span className="hidden sm:inline">Entire Team</span>
+                <span className="sm:hidden">Team</span>
               </button>
             </div>
           )}
 
           <form onSubmit={handleSubmit}>
             {/* Input Card */}
-            <div className="mt-4 bg-slate-50 rounded-3xl border p-4 md:p-5">
+            <div className="mt-3 sm:mt-4 bg-slate-50 rounded-2xl sm:rounded-3xl border p-3 sm:p-4 md:p-5">
 
-              <label className="font-semibold text-base flex items-center gap-2">
+              <label className="font-semibold text-sm sm:text-base flex items-center gap-2">
                 {inputType === 'student'
                   ? 'Student System ID'
                   : 'Team ID'}
 
-                <BadgeInfo size={16} className="text-slate-400" />
+                <BadgeInfo size={14} className="text-slate-400" />
               </label>
 
-              <div className="mt-3 flex items-center rounded-2xl border bg-white px-4 py-3 focus-within:ring-2 focus-within:ring-blue-500">
+              <div className="mt-2 sm:mt-3 flex items-center rounded-2xl border bg-white px-3 sm:px-4 py-2.5 sm:py-3 focus-within:ring-2 focus-within:ring-blue-500">
                 {inputType === 'student' ? (
-                  <User className="text-blue-500" />
+                  <User className="text-blue-500" size={18} />
                 ) : (
-                  <Users className="text-blue-500" />
+                  <Users className="text-blue-500" size={18} />
                 )}
 
                 <input
@@ -494,51 +582,51 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
                   }
                   disabled={absentLoading}
                   autoComplete="off"
-                  className="ml-3 w-full outline-none text-base"
+                  className="ml-2 sm:ml-3 w-full outline-none text-sm sm:text-base"
                 />
               </div>
 
-              <p className="mt-2 text-sm text-slate-500">
+              <p className="mt-2 text-xs sm:text-sm text-slate-500">
                 {inputType === 'student'
                   ? 'Enter the student\'s unique system ID.'
                   : 'Enter the registered team ID.'}
               </p>
 
               {loading && inputType === 'student' && (
-                <p className="mt-2 text-sm text-blue-600">Loading student...</p>
+                <p className="mt-2 text-xs sm:text-sm text-blue-600">Loading student...</p>
               )}
               {loading && inputType === 'team' && (
-                <p className="mt-2 text-sm text-blue-600">Loading team...</p>
+                <p className="mt-2 text-xs sm:text-sm text-blue-600">Loading team...</p>
               )}
 
             </div>
 
             {/* Buttons - only for individual student mode */}
             {inputType === 'student' && (
-              <div className="grid md:grid-cols-2 gap-4 mt-4">
+              <div className="grid grid-cols-2 gap-2 mt-2">
                 <button
                   type="submit"
                   disabled={loading || absentLoading}
-                  className="bg-green-500 hover:bg-green-600 disabled:bg-green-300 transition text-white rounded-2xl py-3 font-semibold text-lg flex items-center justify-center gap-2 shadow-lg"
+                  className="bg-green-500 hover:bg-green-600 disabled:bg-green-300 transition text-white rounded-xl py-2 font-semibold text-sm flex items-center justify-center gap-1 shadow"
                 >
-                  <CheckCircle2 />
-                  {loading ? 'Processing...' : 'Mark Present'}
+                  <CheckCircle2 size={16} />
+                  {loading ? '...' : 'Present'}
                 </button>
 
                 <button
                   type="button"
                   onClick={handleMarkAbsent}
                   disabled={loading || absentLoading}
-                  className="bg-red-500 hover:bg-red-600 disabled:bg-red-300 transition text-white rounded-2xl py-3 font-semibold text-lg flex items-center justify-center gap-2 shadow-lg"
+                  className="bg-red-500 hover:bg-red-600 disabled:bg-red-300 transition text-white rounded-xl py-2 font-semibold text-sm flex items-center justify-center gap-1 shadow"
                 >
-                  <XCircle />
-                  {absentLoading ? 'Processing...' : 'Mark Absent'}
+                  <XCircle size={16} />
+                  {absentLoading ? '...' : 'Absent'}
                 </button>
               </div>
             )}
 
             {inputType === 'team' && (
-              <p className="mt-4 text-sm text-slate-500 text-center">
+              <p className="mt-3 sm:mt-4 text-xs sm:text-sm text-slate-500 text-center px-2">
                 Select team members below and use <strong>Update Team Attendance</strong>.
               </p>
             )}
@@ -547,41 +635,54 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
           <div className="flex-1 min-h-0 overflow-y-auto">
           {/* Student Details */}
           {showStudentDetails && studentInfo && (
-            <div className="mt-4 bg-blue-50 rounded-3xl p-4">
-              <h3 className="text-xl font-bold text-slate-800">👤 {studentInfo.name}</h3>
-              <div className="flex flex-wrap gap-2 mt-2">
-                <span className="bg-white px-3 py-1 rounded-full text-sm font-medium">{studentInfo.systemId}</span>
-                {studentInfo.dept && <span className="bg-white px-3 py-1 rounded-full text-sm font-medium">{studentInfo.dept}</span>}
-                {studentInfo.team_names && <span className="bg-white px-3 py-1 rounded-full text-sm font-medium">Teams: {studentInfo.team_names}</span>}
-              </div>
-              <div className={`mt-4 p-4 rounded-2xl ${studentInfo.isPresentToday ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                <div className="font-bold text-lg">
-                  {studentInfo.isPresentToday ? 'Present Today' : 'Not Present Today'}
+            <div className="mt-2 bg-slate-50 rounded-lg p-2">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold text-slate-800 truncate">{studentInfo.name}</h3>
+                <div className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${studentInfo.isPresentToday ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                  {studentInfo.isPresentToday ? 'Present' : 'Absent'}
                 </div>
-                {studentInfo.isPresentToday && studentInfo.recordedAt && (
-                  <div className="text-sm mt-1">
-                    Recorded at: {new Date(studentInfo.recordedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true, month: 'short', day: 'numeric' })}
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 mt-1.5">
+                <div className="bg-white rounded p-1.5">
+                  <p className="text-[9px] text-slate-400">System ID</p>
+                  <p className="text-[10px] font-semibold text-slate-700 truncate">{studentInfo.systemId}</p>
+                </div>
+                {studentInfo.dept && (
+                  <div className="bg-white rounded p-1.5">
+                    <p className="text-[9px] text-slate-400">Department</p>
+                    <p className="text-[10px] font-semibold text-slate-700 truncate">{studentInfo.dept}</p>
+                  </div>
+                )}
+                {studentInfo.team_names && (
+                  <div className="bg-white rounded p-1.5 col-span-2">
+                    <p className="text-[9px] text-slate-400">Team</p>
+                    <p className="text-[10px] font-semibold text-slate-700 truncate">{studentInfo.team_names}</p>
                   </div>
                 )}
               </div>
+              {studentInfo.isPresentToday && studentInfo.recordedAt && (
+                <div className="mt-1.5 text-[10px] text-slate-500">
+                  {new Date(studentInfo.recordedAt).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })}
+                </div>
+              )}
             </div>
           )}
 
           {/* Team Member Selection */}
           {showTeamSelection && teamInfo && (
-            <div className="mt-4 bg-slate-50 rounded-3xl p-4">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold text-slate-800">👥 {teamInfo.team_name}</h3>
-                <p className="text-slate-500 text-sm">
+            <div className="mt-3 bg-slate-50 rounded-xl p-3">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
+                <h3 className="text-sm font-bold text-slate-800 truncate">{teamInfo.team_name}</h3>
+                <p className="text-slate-500 text-xs">
                   {selectedMembers.length} of {teamMembers.length} selected
                 </p>
               </div>
 
-              <div className="flex gap-3 mb-4">
+              <div className="flex gap-2 mb-2">
                 <button
                   type="button"
                   onClick={handleSelectAll}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-semibold"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-[10px] font-semibold"
                   disabled={loading}
                 >
                   Select All
@@ -589,28 +690,36 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
                 <button
                   type="button"
                   onClick={handleSelectNone}
-                  className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold"
+                  className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 px-2 py-1 rounded text-[10px] font-semibold"
                   disabled={loading}
                 >
                   Select None
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-64 overflow-y-auto pr-2">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 max-h-48 overflow-y-auto pr-1">
                 {teamMembers.map((member) => (
                   <div
                     key={member.systemId}
                     onClick={() => handleMemberToggle(member.systemId)}
-                    className={`p-3 rounded-2xl border cursor-pointer transition ${
+                    className={`p-1.5 rounded border cursor-pointer transition ${
                       selectedMembers.includes(member.systemId)
                         ? 'bg-green-50 border-green-500'
                         : 'bg-white border-slate-200'
                     } ${member.isPresentToday ? 'opacity-75' : ''}`}
                   >
-                    <div className="font-semibold text-sm">{member.name}</div>
-                    <div className="text-xs text-slate-500">{member.systemId}</div>
-                    {member.isPresentToday && (
-                      <div className="text-xs text-green-600 font-medium mt-1">Already Present</div>
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="font-semibold text-[10px] truncate">{member.name}</div>
+                      {member.isPresentToday && (
+                        <span className="text-[9px] text-green-600 font-medium whitespace-nowrap">Done</span>
+                      )}
+                    </div>
+                    <div className="text-[9px] text-slate-500 truncate">{member.systemId}</div>
+                    {member.dept && (
+                      <div className="text-[9px] text-slate-500 truncate">{member.dept}</div>
+                    )}
+                    {member.team_names && (
+                      <div className="text-[9px] text-slate-500 truncate">{member.team_names}</div>
                     )}
                   </div>
                 ))}
@@ -619,18 +728,18 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
               <button
                 onClick={handleTeamAttendanceSubmit}
                 disabled={loading}
-                className="mt-4 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-3 rounded-2xl font-semibold transition"
+                className="mt-2 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-2 rounded-xl font-semibold transition text-xs"
               >
-                {loading ? 'Updating...' : 'Update Team Attendance'}
+                {loading ? 'Updating...' : 'Update'}
               </button>
             </div>
           )}
           </div>
 
           {/* Footer */}
-          <div className="mt-4 border-t pt-4 flex justify-center shrink-0">
-            <div className="flex items-center gap-3 text-slate-500">
-              <CheckCircle2 className="text-blue-600" />
+          <div className="mt-3 sm:mt-4 border-t pt-3 sm:pt-4 flex justify-center shrink-0">
+            <div className="flex items-center gap-2 sm:gap-3 text-slate-500 text-xs sm:text-sm">
+              <CheckCircle2 className="text-blue-600" size={18} />
               <span className="font-medium">
                 Secure • Reliable • Smart Attendance
               </span>
@@ -640,6 +749,91 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
         </div>
 
       </div>
+
+      {/* Admin marked students floating button */}
+      {user?.role === 'admin' && showAdminNav && (
+        <button
+          onClick={() => setShowAdminMarkedList(true)}
+          className="fixed bottom-6 left-6 z-40 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg w-11 h-11 flex items-center justify-center transition"
+          title="My marked students"
+        >
+          <Users size={20} />
+        </button>
+      )}
+
+      {/* Admin marked students popup */}
+      {showAdminMarkedList && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b">
+              <div>
+                <h2 className="text-xl font-bold text-slate-800">My Marked Students Today</h2>
+                {adminStats && (
+                  <p className="text-sm text-slate-500">{adminStats.date && new Date(adminStats.date).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={loadAdminMarkedStudents}
+                  disabled={adminLoading}
+                  className="p-2 rounded-full hover:bg-slate-100 text-slate-600 transition"
+                  title="Refresh"
+                >
+                  <RefreshCw size={18} className={adminLoading ? "animate-spin" : ""} />
+                </button>
+                <button
+                  onClick={() => setShowAdminMarkedList(false)}
+                  className="p-2 rounded-full hover:bg-slate-100 text-slate-600 transition"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5 overflow-y-auto">
+              {adminLoading && adminMarkedStudents.length === 0 ? (
+                <div className="text-center text-slate-500 py-8">Loading your marked students...</div>
+              ) : adminMarkedStudents.length > 0 ? (
+                <div className="space-y-2">
+                  {adminMarkedStudents.map((student) => (
+                    <div key={student.system_id} className="flex items-center justify-between gap-3 p-2 rounded-lg border border-slate-200 bg-slate-50 text-sm">
+                      <div className="flex items-center gap-2 min-w-0 truncate">
+                        <span className="font-semibold text-slate-800 truncate">{student.name}</span>
+                        <span className="text-slate-400">|</span>
+                        <span className="text-slate-500">{student.system_id}</span>
+                        {student.dept && (
+                          <>
+                            <span className="text-slate-400">|</span>
+                            <span className="text-slate-500 truncate">{student.dept}</span>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                          Present
+                        </span>
+                        <span className="text-[10px] text-slate-500">
+                          {new Date(student.recorded_at).toLocaleTimeString('en-IN', {
+                            timeZone: 'Asia/Kolkata',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: true
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-10 text-slate-500">
+                  <p className="text-lg mb-2">No students marked yet today</p>
+                  <p className="text-sm">Use the form above to mark students as present</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

@@ -653,6 +653,12 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
                     <p className="text-[10px] font-semibold text-slate-700 truncate">{studentInfo.dept}</p>
                   </div>
                 )}
+                {studentInfo.section && (
+                  <div className="bg-white rounded p-1.5">
+                    <p className="text-[9px] text-slate-400">Section</p>
+                    <p className="text-[10px] font-semibold text-slate-700 truncate">{studentInfo.section}</p>
+                  </div>
+                )}
                 {studentInfo.team_names && (
                   <div className="bg-white rounded p-1.5 col-span-2">
                     <p className="text-[9px] text-slate-400">Team</p>
@@ -717,6 +723,9 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
                     <div className="text-[9px] text-slate-500 truncate">{member.systemId}</div>
                     {member.dept && (
                       <div className="text-[9px] text-slate-500 truncate">{member.dept}</div>
+                    )}
+                    {member.section && (
+                      <div className="text-[9px] text-slate-500 truncate">{member.section}</div>
                     )}
                     {member.team_names && (
                       <div className="text-[9px] text-slate-500 truncate">{member.team_names}</div>
@@ -805,6 +814,12 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
                           <>
                             <span className="text-slate-400">|</span>
                             <span className="text-slate-500 truncate">{student.dept}</span>
+                          </>
+                        )}
+                        {student.section && (
+                          <>
+                            <span className="text-slate-400">|</span>
+                            <span className="text-slate-500 truncate">{student.section}</span>
                           </>
                         )}
                       </div>

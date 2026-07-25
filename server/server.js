@@ -107,9 +107,11 @@ const initializeDatabase = async () => {
     // Create students table (without team_id - will use junction table)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS students (
+        id SERIAL,
         system_id VARCHAR(20) PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
         dept VARCHAR(100) NOT NULL,
+        section VARCHAR(100),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -187,36 +189,6 @@ const initializeDatabase = async () => {
         INSERT INTO settings (setting_key, setting_value, description) 
         VALUES ($1, $2, $3)
       `, ['attendance_passcode_expires_at', '', 'Expiry timestamp for the daily attendance passcode']);
-    }
-
-    // Seed demo users if they don't exist
-    const bcrypt = require('bcryptjs');
-
-    // Check if users exist
-    const userCheck = await pool.query('SELECT COUNT(*) as count FROM users');
-
-    if (parseInt(userCheck.rows[0].count) === 0) {
-      // console.log('Seeding demo users...');
-
-      // Hash passwords
-      const adminPassword = await bcrypt.hash('admin123', 10);
-      const userPassword = await bcrypt.hash('user123', 10);
-
-      // Insert admin user
-      await pool.query(`
-        INSERT INTO users (email, password, role, name) 
-        VALUES ($1, $2, $3, $4)
-      `, ['admin@example.com', adminPassword, 'admin', 'Administrator']);
-
-      // Insert regular user
-      await pool.query(`
-        INSERT INTO users (email, password, role, name) 
-        VALUES ($1, $2, $3, $4)
-      `, ['user@example.com', userPassword, 'user', 'Regular User']);
-
-      // console.log('✅ Demo users created successfully!');
-      // console.log('   Admin: username=admin, password=admin123');
-      // console.log('   User: username=user, password=user123');
     }
 
     console.log('✅ Database initialized successfully');
@@ -1051,7 +1023,7 @@ app.get('/api/today-stats', async (req, res) => {
 
     // Get list of present students with details
     const presentStudentsQuery = `
-      SELECT s.system_id, s.name, s.dept, a.recorded_at, a.marked_by,
+      SELECT s.system_id, s.name, s.dept, s.section, a.recorded_at, a.marked_by,
              u.email as marked_by_email, u.name as marked_by_name,
              STRING_AGG(DISTINCT t.team_id, ', ') as team_ids,
              STRING_AGG(DISTINCT t.team_name, ', ') as team_names
@@ -1061,7 +1033,7 @@ app.get('/api/today-stats', async (req, res) => {
       LEFT JOIN student_teams st ON s.system_id = st.student_id
       LEFT JOIN teams t ON st.team_id = t.team_id
       WHERE a.date = $1 AND a.present = true
-      GROUP BY s.system_id, s.name, s.dept, a.recorded_at, a.marked_by, u.email, u.name
+      GROUP BY s.system_id, s.name, s.dept, s.section, a.recorded_at, a.marked_by, u.email, u.name
       ORDER BY a.recorded_at ASC
     `;
     const presentStudentsResult = await pool.query(presentStudentsQuery, [today]);
@@ -1103,7 +1075,7 @@ app.get('/api/user-stats/:userId', async (req, res) => {
 
     // Get list of students marked by this user today
     const markedStudentsQuery = `
-      SELECT s.system_id, s.name, s.dept, a.recorded_at,
+      SELECT s.system_id, s.name, s.dept, s.section, a.recorded_at,
              STRING_AGG(DISTINCT t.team_id, ', ') as team_ids,
              STRING_AGG(DISTINCT t.team_name, ', ') as team_names
       FROM students s
@@ -1111,7 +1083,7 @@ app.get('/api/user-stats/:userId', async (req, res) => {
       LEFT JOIN student_teams st ON s.system_id = st.student_id
       LEFT JOIN teams t ON st.team_id = t.team_id
       WHERE a.marked_by = $1 AND a.date = $2 AND a.present = true
-      GROUP BY s.system_id, s.name, s.dept, a.recorded_at
+      GROUP BY s.system_id, s.name, s.dept, s.section, a.recorded_at
       ORDER BY a.recorded_at ASC
     `;
     const markedStudentsResult = await pool.query(markedStudentsQuery, [userId, today]);
@@ -1170,14 +1142,47 @@ app.post('/api/upload-students', upload.single('excelFile'), async (req, res) =>
     }
 
     // Validate required columns
-    const requiredColumns = ['system_id', 'name'];
+    const requiredColumns = ['system_id', 'name', 'dept', 'section', 'team_id'];
     const firstRow = data[0];
     const missingColumns = requiredColumns.filter(col => !(col in firstRow));
 
     if (missingColumns.length > 0) {
       return res.status(400).json({
         success: false,
-        message: `Missing required columns: ${missingColumns.join(', ')}. Required: system_id, name. Optional: team_id`
+        message: `Missing required columns: ${missingColumns.join(', ')}. Required: system_id, name, dept, section, team_id`
+      });
+    }
+
+    // Validate every row before starting the transaction
+    const missingFieldRows = [];
+    data.forEach((row, index) => {
+      const systemId = row.system_id?.toString().trim().toUpperCase();
+      const name = row.name?.toString().trim();
+      const dept = row.dept?.toString().trim();
+      const section = row.section?.toString().trim();
+      const teamId = row.team_id?.toString().trim().toUpperCase();
+
+      if (!systemId || !name || !dept || !section || !teamId) {
+        missingFieldRows.push({
+          row: index + 2,
+          data: row
+        });
+      }
+    });
+
+    if (missingFieldRows.length > 0) {
+      // Clean up uploaded file
+      const fs = require('fs');
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (cleanupError) {
+        console.error('Error cleaning up file:', cleanupError);
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: 'Upload rejected. Some rows are missing required fields (system_id, name, dept, section, team_id).',
+        invalidRows: missingFieldRows
       });
     }
 
@@ -1193,12 +1198,9 @@ app.post('/api/upload-students', upload.single('excelFile'), async (req, res) =>
         try {
           const systemId = row.system_id?.toString().trim().toUpperCase();
           const name = row.name?.toString().trim();
-          const teamId = row.team_id?.toString().trim().toUpperCase() || null;
-
-          if (!systemId || !name) {
-            errors.push(`Row skipped: Missing system_id or name - ${JSON.stringify(row)}`);
-            continue;
-          }
+          const dept = row.dept?.toString().trim();
+          const section = row.section?.toString().trim();
+          const teamId = row.team_id?.toString().trim().toUpperCase();
 
           // Check if student exists
           const existingStudent = await client.query(
@@ -1209,17 +1211,29 @@ app.post('/api/upload-students', upload.single('excelFile'), async (req, res) =>
           if (existingStudent.rows.length > 0) {
             // Update existing student
             await client.query(
-              'UPDATE students SET name = $1, team_id = $2 WHERE UPPER(system_id) = $3',
-              [name, teamId, systemId]
+              'UPDATE students SET name = $1, dept = $2, section = $3 WHERE UPPER(system_id) = $4',
+              [name, dept, section, systemId]
             );
             updatedStudents++;
           } else {
             // Insert new student
             await client.query(
-              'INSERT INTO students (system_id, name, team_id) VALUES ($1, $2, $3)',
-              [systemId, name, teamId]
+              'INSERT INTO students (system_id, name, dept, section) VALUES ($1, $2, $3, $4)',
+              [systemId, name, dept, section]
             );
             insertedStudents++;
+          }
+
+          // Create team and student-team relationship if team_id is provided
+          if (teamId) {
+            await client.query(
+              'INSERT INTO teams (team_id, team_name) VALUES ($1, $2) ON CONFLICT (team_id) DO NOTHING',
+              [teamId, `Team ${teamId}`]
+            );
+            await client.query(
+              'INSERT INTO student_teams (student_id, team_id) VALUES ($1, $2) ON CONFLICT (student_id, team_id) DO NOTHING',
+              [systemId, teamId]
+            );
           }
         } catch (rowError) {
           errors.push(`Error processing row: ${JSON.stringify(row)} - ${rowError.message}`);
@@ -1300,6 +1314,7 @@ app.get('/api/team/:teamId', async (req, res) => {
         s.system_id,
         s.name as student_name,
         s.dept,
+        s.section,
         COALESCE(a.present, false) as is_present_today,
         a.recorded_at
       FROM teams t
@@ -1341,6 +1356,7 @@ app.get('/api/team/:teamId', async (req, res) => {
       systemId: row.system_id,
       name: row.student_name,
       dept: row.dept,
+      section: row.section,
       isPresentToday: row.is_present_today,
       recordedAt: row.recorded_at
     }));
@@ -1383,6 +1399,7 @@ app.get('/api/student/:systemId', async (req, res) => {
         s.system_id,
         s.name,
         s.dept,
+        s.section,
         STRING_AGG(DISTINCT t.team_id, ', ') as team_ids,
         STRING_AGG(DISTINCT t.team_name, ', ') as team_names,
         COALESCE(a.present, false) as is_present_today,
@@ -1392,7 +1409,7 @@ app.get('/api/student/:systemId', async (req, res) => {
       LEFT JOIN teams t ON st.team_id = t.team_id
       LEFT JOIN attendance a ON s.system_id = a.student_id AND a.date = $1
       WHERE UPPER(s.system_id) = $2
-      GROUP BY s.system_id, s.name, s.dept, a.present, a.recorded_at
+      GROUP BY s.system_id, s.name, s.dept, s.section, a.present, a.recorded_at
     `;
 
     const result = await pool.query(query, [today, trimmedSystemId]);
@@ -1413,6 +1430,7 @@ app.get('/api/student/:systemId', async (req, res) => {
         name: student.name,
         team_ids: student.team_ids,
         dept: student.dept,
+        section: student.section,
         team_names: student.team_names,
         isPresentToday: student.is_present_today,
         recordedAt: student.recorded_at
@@ -1696,20 +1714,28 @@ app.get('/api/export-excel', async (req, res) => {
   try {
     // Get all attendance records with student and team details
     const query = `
-      SELECT 
+      WITH student_teams_agg AS (
+        SELECT
+          st.student_id,
+          STRING_AGG(DISTINCT t.team_id, ', ') as team_ids,
+          STRING_AGG(DISTINCT t.team_name, ', ') as team_names
+        FROM student_teams st
+        LEFT JOIN teams t ON st.team_id = t.team_id
+        GROUP BY st.student_id
+      )
+      SELECT
         s.system_id,
         s.name,
         s.dept,
-        STRING_AGG(DISTINCT t.team_id, ', ') as team_ids,
-        STRING_AGG(DISTINCT t.team_name, ', ') as team_names,
+        s.section,
+        sta.team_ids,
+        sta.team_names,
         a.date,
         a.present,
         a.recorded_at
       FROM students s
-      LEFT JOIN student_teams st ON s.system_id = st.student_id
-      LEFT JOIN teams t ON st.team_id = t.team_id
+      LEFT JOIN student_teams_agg sta ON s.system_id = sta.student_id
       LEFT JOIN attendance a ON s.system_id = a.student_id
-      GROUP BY s.system_id, s.name, s.dept, a.date, a.present, a.recorded_at
       ORDER BY s.system_id ASC, a.date DESC
     `;
 
@@ -1717,13 +1743,14 @@ app.get('/api/export-excel', async (req, res) => {
 
     // Transform data for Excel with serial number
     const excelData = result.rows.map((row, index) => ({
-      'S.No': index + 1,
-      'Team IDs': row.team_ids || 'No Team',
-      'System ID': row.system_id,
-      'Student Name': row.name,
-      'Department': row.dept || 'Not Set',
-      'Status': row.present === null ? 'No Record' : (row.present ? 'Present' : 'Absent'),
-      'Recorded At': row.recorded_at ? new Date(row.recorded_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'N/A'
+      s_no: index + 1,
+      team_ids: row.team_ids || 'No Team',
+      system_id: row.system_id,
+      name: row.name,
+      dept: row.dept || 'Not Set',
+      section: row.section || 'Not Set',
+      status: row.present === null ? 'No Record' : (row.present ? 'Present' : 'Absent'),
+      recorded_at: row.recorded_at ? new Date(row.recorded_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'N/A'
     }));
 
     // Create workbook and worksheet
@@ -1737,6 +1764,7 @@ app.get('/api/export-excel', async (req, res) => {
       { header: 'System ID', key: 'system_id', width: 12 },
       { header: 'Student Name', key: 'name', width: 25 },
       { header: 'Department', key: 'dept', width: 30 },
+      { header: 'Section', key: 'section', width: 15 },
       { header: 'Status', key: 'status', width: 10 },
       { header: 'Recorded At', key: 'recorded_at', width: 22 }
     ];

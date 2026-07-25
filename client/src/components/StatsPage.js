@@ -230,6 +230,11 @@ const StatsPage = () => {
                         <div className="student-details">
                           <div className="student-name">{student.name}</div>
                           <div className="student-id">ID: {student.system_id}</div>
+                          {student.section && (
+                            <div className="student-section" style={{ fontSize: '0.85em', color: '#666', marginTop: '4px' }}>
+                              Section: {student.section}
+                            </div>
+                          )}
                           {student.marked_by_name && (
                             <div className="marked-by" style={{ fontSize: '0.85em', color: '#666', marginTop: '4px' }}>
                               👤 Marked by: {student.marked_by_name}

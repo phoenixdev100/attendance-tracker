@@ -82,7 +82,8 @@ const AdminDashboard = ({ user, onLogout }) => {
 
         try {
             const response = await api.get('/api/export-excel', {
-                responseType: 'blob'
+                responseType: 'blob',
+                timeout: 60000
             });
 
             const url = window.URL.createObjectURL(new Blob([response.data]));

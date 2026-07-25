@@ -7,8 +7,11 @@
     "start": "nodemon server.js",
     "dev": "node server.js",
     "import": "node scripts/import-excel-data.js",
-    "seed": "node scripts/seed-database.js",
-    "db-test": "node scripts/test-db.js"
+    "seed-db": "node scripts/seed-db.js",
+    "db-test": "node scripts/test-db.js",
+    "push-schema": "node scripts/push-schema.js",
+    "clear-db": "node scripts/clear-db.js",
+    "drop-tables": "node scripts/drop-tables.js"
   },
   "keywords": [
     "attendance",

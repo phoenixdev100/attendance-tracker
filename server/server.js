@@ -65,7 +65,10 @@ app.use(express.json());
 // PostgreSQL connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 50, // Increase max connections for concurrent users
+  idleTimeoutMillis: 30000, // Close idle connections after 30s
+  connectionTimeoutMillis: 2000, // Timeout after 2s if can't connect
 });
 
 // Set timezone to Asia/Kolkata for all new DB connections
@@ -912,41 +915,43 @@ app.post('/api/mark-present', async (req, res) => {
         isTeamAttendance = true;
       }
 
-      // Process attendance for all students
+      // Process attendance for all students using batch operations
       let markedStudents = [];
       let alreadyPresentStudents = [];
       let updatedStudents = [];
 
-      for (const student of studentsToMark) {
-        // Check if attendance already marked for today
-        const attendanceCheckQuery = `
-          SELECT id, present FROM attendance 
-          WHERE student_id = $1 AND date = $2
-        `;
-        const attendanceCheckResult = await client.query(attendanceCheckQuery, [student.system_id, today]);
+      // Get all existing attendance records for these students in one query
+      const studentIds = studentsToMark.map(s => s.system_id);
+      const existingAttendanceQuery = `
+        SELECT student_id, present FROM attendance
+        WHERE student_id = ANY($1) AND date = $2
+      `;
+      const existingAttendanceResult = await client.query(existingAttendanceQuery, [studentIds, today]);
+      const existingRecords = new Map(
+        existingAttendanceResult.rows.map(row => [row.student_id, row.present])
+      );
 
-        if (attendanceCheckResult.rows.length > 0) {
-          const existingRecord = attendanceCheckResult.rows[0];
-          if (existingRecord.present) {
-            alreadyPresentStudents.push(student);
-          } else {
-            // Update existing record to present
-            const updateQuery = `
-              UPDATE attendance 
-              SET present = true, recorded_at = CURRENT_TIMESTAMP, marked_by = $3 
-              WHERE student_id = $1 AND date = $2
-            `;
-            await client.query(updateQuery, [student.system_id, today, userId]);
-            updatedStudents.push(student);
-          }
+      // Batch insert/update using UPSERT
+      for (const student of studentsToMark) {
+        const existingPresent = existingRecords.get(student.system_id);
+
+        if (existingPresent === true) {
+          alreadyPresentStudents.push(student);
         } else {
-          // Insert new attendance record
-          const insertQuery = `
-            INSERT INTO attendance (student_id, date, present, recorded_at, marked_by) 
+          // Use UPSERT to handle both insert and update in one query
+          const upsertQuery = `
+            INSERT INTO attendance (student_id, date, present, recorded_at, marked_by)
             VALUES ($1, $2, true, CURRENT_TIMESTAMP, $3)
+            ON CONFLICT (student_id, date)
+            DO UPDATE SET present = true, recorded_at = CURRENT_TIMESTAMP, marked_by = $3
           `;
-          await client.query(insertQuery, [student.system_id, today, userId]);
-          markedStudents.push(student);
+          await client.query(upsertQuery, [student.system_id, today, userId]);
+
+          if (existingPresent === false) {
+            updatedStudents.push(student);
+          } else {
+            markedStudents.push(student);
+          }
         }
       }
 
@@ -1528,34 +1533,30 @@ app.post('/api/mark-team-attendance', async (req, res) => {
       let markedAbsent = [];
       let errors = [];
 
-      // Process each team member
+      // Get all existing attendance records for team members in one query
+      const studentIds = allTeamMembers.map(m => m.system_id);
+      const existingAttendanceQuery = `
+        SELECT student_id, present FROM attendance
+        WHERE student_id = ANY($1) AND date = $2
+      `;
+      const existingAttendanceResult = await client.query(existingAttendanceQuery, [studentIds, today]);
+      const existingRecords = new Map(
+        existingAttendanceResult.rows.map(row => [row.student_id, row.present])
+      );
+
+      // Process each team member using batch operations
       for (const member of allTeamMembers) {
         const isSelected = selectedStudents.includes(member.system_id);
 
         try {
-          // Check if attendance record exists for today
-          const checkQuery = `
-            SELECT id, present FROM attendance 
-            WHERE student_id = $1 AND date = $2
+          // Use UPSERT to handle both insert and update in one query
+          const upsertQuery = `
+            INSERT INTO attendance (student_id, date, present, recorded_at, marked_by)
+            VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4)
+            ON CONFLICT (student_id, date)
+            DO UPDATE SET present = $3, recorded_at = CURRENT_TIMESTAMP, marked_by = $4
           `;
-          const checkResult = await client.query(checkQuery, [member.system_id, today]);
-
-          if (checkResult.rows.length > 0) {
-            // Update existing record
-            const updateQuery = `
-              UPDATE attendance 
-              SET present = $1, recorded_at = CURRENT_TIMESTAMP, marked_by = $4 
-              WHERE student_id = $2 AND date = $3
-            `;
-            await client.query(updateQuery, [isSelected, member.system_id, today, userId || null]);
-          } else {
-            // Insert new record
-            const insertQuery = `
-              INSERT INTO attendance (student_id, date, present, recorded_at, marked_by) 
-              VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4)
-            `;
-            await client.query(insertQuery, [member.system_id, today, isSelected, userId || null]);
-          }
+          await client.query(upsertQuery, [member.system_id, today, isSelected, userId || null]);
 
           if (isSelected) {
             markedPresent.push(member);
@@ -1665,28 +1666,35 @@ app.post('/api/mark-absent', async (req, res) => {
       let noRecordCount = 0;
       const markedStudents = [];
 
-      // Process each student
-      for (const student of studentsToMarkAbsent) {
-        // Check if student has attendance record for today
-        const attendanceQuery = 'SELECT * FROM attendance WHERE student_id = $1 AND date = $2';
-        const attendanceResult = await client.query(attendanceQuery, [student.system_id, today]);
+      // Get all existing attendance records for these students in one query
+      const studentIds = studentsToMarkAbsent.map(s => s.system_id);
+      const existingAttendanceQuery = `
+        SELECT student_id, present FROM attendance
+        WHERE student_id = ANY($1) AND date = $2
+      `;
+      const existingAttendanceResult = await client.query(existingAttendanceQuery, [studentIds, today]);
+      const existingRecords = new Map(
+        existingAttendanceResult.rows.map(row => [row.student_id, row.present])
+      );
 
-        if (attendanceResult.rows.length === 0) {
+      // Process each student using batch operations
+      for (const student of studentsToMarkAbsent) {
+        const existingPresent = existingRecords.get(student.system_id);
+
+        if (existingPresent === undefined) {
           noRecordCount++;
           continue;
         }
 
-        const attendanceRecord = attendanceResult.rows[0];
-
-        if (!attendanceRecord.present) {
+        if (!existingPresent) {
           alreadyAbsentCount++;
           continue;
         }
 
         // Update attendance to absent
         const updateQuery = `
-          UPDATE attendance 
-          SET present = false, recorded_at = CURRENT_TIMESTAMP 
+          UPDATE attendance
+          SET present = false, recorded_at = CURRENT_TIMESTAMP
           WHERE student_id = $1 AND date = $2
         `;
         await client.query(updateQuery, [student.system_id, today]);

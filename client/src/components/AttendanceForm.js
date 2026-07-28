@@ -10,7 +10,6 @@ import {
   CalendarCheck2,
   BadgeInfo,
   Download,
-  ClipboardCheck,
   X,
   RefreshCw,
 } from "lucide-react";

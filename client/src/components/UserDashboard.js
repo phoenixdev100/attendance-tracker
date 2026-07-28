@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { Users, X, RefreshCw } from 'lucide-react';
 import AttendanceForm from './AttendanceForm';
 import api from '../config/api';
+import { useToast } from '../hooks/useToast';
 
 const UserDashboard = ({ user, onLogout }) => {
     const navigate = useNavigate();
+    const { showToast } = useToast();
     const [markedStudents, setMarkedStudents] = useState([]);
     const [loading, setLoading] = useState(false);
     const [stats, setStats] = useState(null);
@@ -28,6 +30,25 @@ const UserDashboard = ({ user, onLogout }) => {
         }
     }, [user?.id]);
 
+    const validatePasscode = useCallback(async () => {
+        const storedPasscode = localStorage.getItem('attendancePasscode');
+        if (!storedPasscode) return;
+
+        try {
+            const response = await api.post('/api/validate-passcode', { passcode: storedPasscode });
+            if (!response.data.valid) {
+                localStorage.removeItem('attendancePasscode');
+                showToast('Access denied: Passcode has been changed or expired', 'error');
+                window.location.reload();
+            }
+        } catch (error) {
+            console.error('Error validating passcode:', error);
+            localStorage.removeItem('attendancePasscode');
+            showToast('Access denied: Passcode validation failed', 'error');
+            window.location.reload();
+        }
+    }, [showToast]);
+
     useEffect(() => {
         // Check if user is logged in
         if (!user) {
@@ -38,10 +59,17 @@ const UserDashboard = ({ user, onLogout }) => {
         // Load marked students
         loadMarkedStudents();
 
-        // Refresh every 30 seconds
+        // Refresh marked students every 30 seconds
         const interval = setInterval(loadMarkedStudents, 30000);
-        return () => clearInterval(interval);
-    }, [user, navigate, loadMarkedStudents]);
+
+        // Validate passcode every 60 seconds
+        const passcodeInterval = setInterval(validatePasscode, 60000);
+
+        return () => {
+            clearInterval(interval);
+            clearInterval(passcodeInterval);
+        };
+    }, [user, navigate, loadMarkedStudents, validatePasscode]);
 
     const handleLogout = () => {
         localStorage.removeItem('user');

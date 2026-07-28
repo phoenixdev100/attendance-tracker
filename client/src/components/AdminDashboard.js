@@ -23,7 +23,8 @@ const AdminDashboard = ({ user, onLogout }) => {
     const [lastUpdated, setLastUpdated] = useState(null);
     const [, setDownloading] = useState(false);
     const [hasLoaded, setHasLoaded] = useState(false);
-    const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
+    const [countdown, setCountdown] = useState(60);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const hasLoadedRef = useRef(false);
     const navigate = useNavigate();
     const { showToast } = useToast();
@@ -31,17 +32,21 @@ const AdminDashboard = ({ user, onLogout }) => {
     const loadStats = useCallback(async () => {
         try {
             setLoading(true);
+            setIsRefreshing(true);
 
-            const response = await api.get('/api/today-stats');
+            const response = await api.get('/api/today-stats-basic');
             setStats(response.data);
             setLastUpdated(new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }));
             setHasLoaded(true);
+            setCountdown(60);
+            showToast('Statistics refreshed successfully', 'success');
 
         } catch (error) {
             console.error('Error loading stats:', error);
             showToast('Failed to load statistics. Please check your connection and try again.', 'error');
         } finally {
             setLoading(false);
+            setIsRefreshing(false);
         }
     }, [showToast]);
 
@@ -57,18 +62,28 @@ const AdminDashboard = ({ user, onLogout }) => {
         }
 
         let interval;
-        if (autoRefreshEnabled && hasLoaded) {
+        let countdownInterval;
+
+        if (hasLoaded) {
+            // Auto-refresh every 60 seconds
             interval = setInterval(() => {
                 if (document.visibilityState === 'visible') {
                     loadStats();
+                    setCountdown(60);
                 }
-            }, 30000);
+            }, 60000);
+
+            // Countdown timer
+            countdownInterval = setInterval(() => {
+                setCountdown(prev => (prev > 0 ? prev - 1 : 60));
+            }, 1000);
         }
 
         return () => {
             if (interval) clearInterval(interval);
+            if (countdownInterval) clearInterval(countdownInterval);
         };
-    }, [user, navigate, autoRefreshEnabled, hasLoaded, loadStats]);
+    }, [user, navigate, hasLoaded, loadStats]);
 
     const handleLogout = () => {
         localStorage.removeItem('user');
@@ -157,7 +172,7 @@ const AdminDashboard = ({ user, onLogout }) => {
             title: "Refresh Stats",
             subtitle: "Reload today's statistics",
             color: "green",
-            icon: <RefreshCw size={22} />,
+            icon: <RefreshCw size={22} className={isRefreshing ? 'animate-spin' : ''} />,
             onClick: loadStats,
         },
         {
@@ -225,15 +240,10 @@ const AdminDashboard = ({ user, onLogout }) => {
                         ) : (
                             <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row items-center gap-2 sm:gap-4 text-gray-500 text-xs sm:text-sm">
                                 <span>Last updated: {lastUpdated}</span>
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={autoRefreshEnabled}
-                                        onChange={(e) => setAutoRefreshEnabled(e.target.checked)}
-                                        className="w-4 h-4"
-                                    />
-                                    Auto-refresh
-                                </label>
+                                <span className="flex items-center gap-1">
+                                    <RefreshCw size={14} />
+                                    Next refresh in {countdown}s
+                                </span>
                             </div>
                         )}
 

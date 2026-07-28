@@ -38,6 +38,8 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
   const [adminMarkedStudents, setAdminMarkedStudents] = useState([]);
   const [adminStats, setAdminStats] = useState(null);
   const [adminLoading, setAdminLoading] = useState(false);
+  const [lastLookedUpTeamId, setLastLookedUpTeamId] = useState('');
+  const [lastLookedUpSystemId, setLastLookedUpSystemId] = useState('');
 
   // Define handleTeamLookup before it's used in useEffect
   const handleTeamLookup = useCallback(async () => {
@@ -55,6 +57,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
         setTeamMembers(response.data.members);
         setSelectedMembers(response.data.members.filter(m => m.isPresentToday).map(m => m.systemId));
         setShowTeamSelection(true);
+        setLastLookedUpTeamId(teamId.trim());
       }
     } catch (error) {
       // Silently handle expected 404/not-found lookup errors
@@ -70,6 +73,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
       setTeamMembers([]);
       setTeamInfo(null);
       setSelectedMembers([]);
+      setLastLookedUpTeamId(teamId.trim());
     } finally {
       setLoading(false);
     }
@@ -121,6 +125,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
       if (response.data.success) {
         setStudentInfo(response.data.student);
         setShowStudentDetails(true);
+        setLastLookedUpSystemId(systemId.trim());
       }
     } catch (error) {
       // Silently handle expected 404/not-found lookup errors
@@ -134,6 +139,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
       // Clear student details on error
       setShowStudentDetails(false);
       setStudentInfo(null);
+      setLastLookedUpSystemId(systemId.trim());
     } finally {
       setLoading(false);
     }
@@ -192,34 +198,54 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
   // Auto-fetch team details when team ID changes
   useEffect(() => {
     if (inputType === 'team' && teamId.trim() && teamId.trim().length >= 4) {
-      const timeoutId = setTimeout(() => {
-        handleTeamLookup();
-      }, 1500); // 1.5s debounce
+      // Only make API call if this is a new ID that hasn't been looked up yet
+      if (teamId.trim() !== lastLookedUpTeamId) {
+        const timeoutId = setTimeout(() => {
+          handleTeamLookup();
+        }, 1500); // 1.5s debounce
 
-      return () => clearTimeout(timeoutId);
-    } else {
-      // Clear team selection if input is too short or switched to individual mode
+        return () => clearTimeout(timeoutId);
+      }
+    } else if (inputType === 'team' && !teamId.trim()) {
+      // Reset tracking when input is cleared
       setShowTeamSelection(false);
       setTeamMembers([]);
       setTeamInfo(null);
       setSelectedMembers([]);
+      setLastLookedUpTeamId('');
+    } else if (inputType !== 'team') {
+      // Clear team details when switching to student mode
+      setShowTeamSelection(false);
+      setTeamMembers([]);
+      setTeamInfo(null);
+      setSelectedMembers([]);
+      setLastLookedUpTeamId('');
     }
-  }, [teamId, inputType, handleTeamLookup]);
+  }, [teamId, inputType, handleTeamLookup, lastLookedUpTeamId]);
 
   // Auto-fetch student details when system ID changes
   useEffect(() => {
     if (inputType === 'student' && systemId.trim() && systemId.trim().length >= 4) {
-      const timeoutId = setTimeout(() => {
-        handleStudentLookup();
-      }, 1500); // 1.5s debounce
+      // Only make API call if this is a new ID that hasn't been looked up yet
+      if (systemId.trim() !== lastLookedUpSystemId) {
+        const timeoutId = setTimeout(() => {
+          handleStudentLookup();
+        }, 1500); // 1.5s debounce
 
-      return () => clearTimeout(timeoutId);
-    } else {
-      // Clear student details if input is too short or switched to team mode
+        return () => clearTimeout(timeoutId);
+      }
+    } else if (inputType === 'student' && !systemId.trim()) {
+      // Reset tracking when input is cleared
       setShowStudentDetails(false);
       setStudentInfo(null);
+      setLastLookedUpSystemId('');
+    } else if (inputType !== 'student') {
+      // Clear student details when switching to team mode
+      setShowStudentDetails(false);
+      setStudentInfo(null);
+      setLastLookedUpSystemId('');
     }
-  }, [systemId, inputType, handleStudentLookup]);
+  }, [systemId, inputType, handleStudentLookup, lastLookedUpSystemId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -247,7 +273,18 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
 
       if (response.data.success) {
         showToast('Attendance marked successfully', 'success');
-        setSystemId(''); // Clear input on success
+
+        // Update student info to show marked as present
+        if (studentInfo) {
+          setStudentInfo({
+            ...studentInfo,
+            isPresentToday: true,
+            recordedAt: new Date().toISOString()
+          });
+        }
+
+        // Don't clear input - keep student details visible until user manually clears
+        setLastLookedUpSystemId(''); // Reset lookup tracking to allow re-lookup if needed
 
         // Update today's marked count for admin
         if (user?.role === 'admin') {
@@ -257,12 +294,6 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
           setMarkedCount(newCount);
           localStorage.setItem(key, newCount.toString());
         }
-
-        // Focus back on input
-        setTimeout(() => {
-          const input = document.getElementById('systemId');
-          if (input) input.focus();
-        }, 100);
 
         onAttendanceMarked?.();
       }
@@ -307,7 +338,18 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
 
       if (response.data.success) {
         showToast('Attendance Updated', 'success');
-        setSystemId(''); // Clear input on success
+
+        // Update student info to show marked as absent
+        if (studentInfo) {
+          setStudentInfo({
+            ...studentInfo,
+            isPresentToday: false,
+            recordedAt: new Date().toISOString()
+          });
+        }
+
+        // Don't clear input - keep student details visible until user manually clears
+        setLastLookedUpSystemId(''); // Reset lookup tracking to allow re-lookup if needed
 
         // Update today's marked count for admin
         if (user?.role === 'admin') {
@@ -317,12 +359,6 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
           setMarkedCount(newCount);
           localStorage.setItem(key, newCount.toString());
         }
-
-        // Focus back on input
-        setTimeout(() => {
-          const input = document.getElementById('systemId');
-          if (input) input.focus();
-        }, 100);
 
         onAttendanceMarked?.();
       }
@@ -437,7 +473,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
 
 
   return (
-    <div className="h-screen w-full bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden p-3 sm:p-4">
+    <div className="h-screen w-full bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden p-3 sm:p-4 fixed inset-0">
 
       {/* Background */}
       <div className="absolute -top-40 -left-40 h-64 w-64 sm:h-96 sm:w-96 rounded-full bg-blue-200/40 blur-3xl"></div>
@@ -446,7 +482,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
       <div className="max-w-3xl mx-auto h-full flex flex-col relative w-full">
 
         {/* Card */}
-        <div className="bg-white/80 backdrop-blur-xl rounded-2xl sm:rounded-[32px] shadow-2xl border border-white p-3 sm:p-4 md:p-6 flex-1 flex flex-col overflow-hidden">
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl sm:rounded-[32px] shadow-2xl border border-white p-3 sm:p-4 md:p-6 flex-1 flex flex-col overflow-hidden relative h-full">
 
           {/* Top bar: actions in corners, icon centered */}
           <div className="relative flex items-center justify-between shrink-0">
@@ -506,17 +542,6 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
 
             <div className="w-12 sm:w-16 h-1 rounded-full bg-blue-600 mt-2 sm:mt-3"></div>
 
-            {user?.role === 'admin' && (
-              <div className="mt-3 flex items-center gap-2 bg-blue-50 px-3 sm:px-4 py-2 rounded-xl border border-blue-100">
-                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                  <ClipboardCheck className="text-blue-600" size={16} />
-                </div>
-                <div className="text-sm sm:text-base">
-                  <span className="font-bold text-slate-800">{markedCount}</span>
-                  <span className="text-slate-500 ml-1">marked today</span>
-                </div>
-              </div>
-            )}
 
           </div>
 
@@ -601,6 +626,43 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
 
             </div>
 
+            {/* Student Details - shown above buttons */}
+            {showStudentDetails && studentInfo && (
+              <div className={`mt-2 rounded-lg p-1.5 border transition ${
+                studentInfo.recordedAt
+                  ? studentInfo.isPresentToday
+                    ? 'bg-green-50 border-green-500'
+                    : 'bg-red-50 border-red-500'
+                  : 'bg-white border-slate-200'
+              }`}>
+                <div className="flex items-center justify-between gap-1">
+                  <div className="font-semibold text-[10px] truncate">{studentInfo.name}</div>
+                  {studentInfo.recordedAt && (
+                    <span className={`text-[9px] font-medium whitespace-nowrap ${studentInfo.isPresentToday ? 'text-green-600' : 'text-red-600'}`}>
+                      {studentInfo.isPresentToday ? 'Present' : 'Absent'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="text-[9px] text-slate-500 truncate">{studentInfo.systemId}</div>
+                  {studentInfo.dept && (
+                    <div className="text-[9px] text-slate-500 truncate">| {studentInfo.dept}</div>
+                  )}
+                  {studentInfo.section && (
+                    <div className="text-[9px] text-slate-500 truncate">| {studentInfo.section}</div>
+                  )}
+                </div>
+                {studentInfo.team_names && (
+                  <div className="text-[9px] text-slate-500 truncate">{studentInfo.team_names}</div>
+                )}
+                {studentInfo.recordedAt && (
+                  <div className="text-[9px] text-slate-400">
+                    {new Date(studentInfo.recordedAt).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Buttons - only for individual student mode */}
             {inputType === 'student' && (
               <div className="grid grid-cols-2 gap-2 mt-2">
@@ -632,59 +694,18 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
             )}
           </form>
 
-          <div className="flex-1 min-h-0 overflow-y-auto">
-          {/* Student Details */}
-          {showStudentDetails && studentInfo && (
-            <div className="mt-2 bg-slate-50 rounded-lg p-2">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-xs font-bold text-slate-800 truncate">{studentInfo.name}</h3>
-                <div className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${studentInfo.isPresentToday ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                  {studentInfo.isPresentToday ? 'Present' : 'Absent'}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-1.5 mt-1.5">
-                <div className="bg-white rounded p-1.5">
-                  <p className="text-[9px] text-slate-400">System ID</p>
-                  <p className="text-[10px] font-semibold text-slate-700 truncate">{studentInfo.systemId}</p>
-                </div>
-                {studentInfo.dept && (
-                  <div className="bg-white rounded p-1.5">
-                    <p className="text-[9px] text-slate-400">Department</p>
-                    <p className="text-[10px] font-semibold text-slate-700 truncate">{studentInfo.dept}</p>
-                  </div>
-                )}
-                {studentInfo.section && (
-                  <div className="bg-white rounded p-1.5">
-                    <p className="text-[9px] text-slate-400">Section</p>
-                    <p className="text-[10px] font-semibold text-slate-700 truncate">{studentInfo.section}</p>
-                  </div>
-                )}
-                {studentInfo.team_names && (
-                  <div className="bg-white rounded p-1.5 col-span-2">
-                    <p className="text-[9px] text-slate-400">Team</p>
-                    <p className="text-[10px] font-semibold text-slate-700 truncate">{studentInfo.team_names}</p>
-                  </div>
-                )}
-              </div>
-              {studentInfo.isPresentToday && studentInfo.recordedAt && (
-                <div className="mt-1.5 text-[10px] text-slate-500">
-                  {new Date(studentInfo.recordedAt).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })}
-                </div>
-              )}
-            </div>
-          )}
-
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide">
           {/* Team Member Selection */}
           {showTeamSelection && teamInfo && (
-            <div className="mt-3 bg-slate-50 rounded-xl p-3">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
+            <div className="mt-3 bg-slate-50 rounded-xl p-3 flex flex-col">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2 shrink-0">
                 <h3 className="text-sm font-bold text-slate-800 truncate">{teamInfo.team_name}</h3>
                 <p className="text-slate-500 text-xs">
                   {selectedMembers.length} of {teamMembers.length} selected
                 </p>
               </div>
 
-              <div className="flex gap-2 mb-2">
+              <div className="flex gap-2 mb-2 shrink-0">
                 <button
                   type="button"
                   onClick={handleSelectAll}
@@ -703,21 +724,25 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 max-h-48 overflow-y-auto pr-1">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-40 sm:max-h-48 overflow-y-auto overflow-x-hidden pr-1 flex-1 min-h-0 px-1 py-1">
                 {teamMembers.map((member) => (
                   <div
                     key={member.systemId}
                     onClick={() => handleMemberToggle(member.systemId)}
                     className={`p-1.5 rounded border cursor-pointer transition ${
-                      selectedMembers.includes(member.systemId)
-                        ? 'bg-green-50 border-green-500'
+                      member.recordedAt
+                        ? member.isPresentToday
+                          ? 'bg-green-50 border-green-500'
+                          : 'bg-red-50 border-red-500'
                         : 'bg-white border-slate-200'
-                    } ${member.isPresentToday ? 'opacity-75' : ''}`}
+                    } ${selectedMembers.includes(member.systemId) ? 'ring-2 ring-blue-500' : ''}`}
                   >
                     <div className="flex items-center justify-between gap-1">
                       <div className="font-semibold text-[10px] truncate">{member.name}</div>
-                      {member.isPresentToday && (
-                        <span className="text-[9px] text-green-600 font-medium whitespace-nowrap">Done</span>
+                      {member.recordedAt && (
+                        <span className={`text-[9px] font-medium whitespace-nowrap ${member.isPresentToday ? 'text-green-600' : 'text-red-600'}`}>
+                          {member.isPresentToday ? 'Present' : 'Absent'}
+                        </span>
                       )}
                     </div>
                     <div className="text-[9px] text-slate-500 truncate">{member.systemId}</div>
@@ -737,7 +762,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
               <button
                 onClick={handleTeamAttendanceSubmit}
                 disabled={loading}
-                className="mt-2 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-2 rounded-xl font-semibold transition text-xs"
+                className="mt-1 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-2 rounded-xl font-semibold transition text-xs shrink-0"
               >
                 {loading ? 'Updating...' : 'Update'}
               </button>

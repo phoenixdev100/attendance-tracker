@@ -1058,6 +1058,44 @@ app.get('/api/today-stats', async (req, res) => {
   }
 });
 
+// Optimized endpoint for dashboard stats (counts only)
+app.get('/api/today-stats-basic', async (req, res) => {
+  const today = getTodayDate();
+
+  try {
+    // Get total number of students
+    const totalQuery = 'SELECT COUNT(*) as total FROM students';
+    const totalResult = await pool.query(totalQuery);
+    const total = parseInt(totalResult.rows[0].total);
+
+    // Get present count for today
+    const presentQuery = `
+      SELECT COUNT(*) as present
+      FROM attendance
+      WHERE date = $1 AND present = true
+    `;
+    const presentResult = await pool.query(presentQuery, [today]);
+    const present = parseInt(presentResult.rows[0].present);
+
+    // Calculate absent count
+    const absent = total - present;
+
+    res.json({
+      date: today,
+      total: total,
+      present: present,
+      absent: absent
+    });
+
+  } catch (error) {
+    console.error('Error fetching today\'s basic stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error. Please try again later.'
+    });
+  }
+});
+
 // API endpoint to get user's marked students
 app.get('/api/user-stats/:userId', async (req, res) => {
   const { userId } = req.params;
@@ -1712,7 +1750,9 @@ app.post('/api/mark-absent', async (req, res) => {
 // API endpoint to export attendance records to Excel
 app.get('/api/export-excel', async (req, res) => {
   try {
-    // Get all attendance records with student and team details
+    const today = getTodayDate();
+
+    // Get today's attendance records with student and team details
     const query = `
       WITH student_teams_agg AS (
         SELECT
@@ -1735,11 +1775,11 @@ app.get('/api/export-excel', async (req, res) => {
         a.recorded_at
       FROM students s
       LEFT JOIN student_teams_agg sta ON s.system_id = sta.student_id
-      LEFT JOIN attendance a ON s.system_id = a.student_id
-      ORDER BY s.system_id ASC, a.date DESC
+      LEFT JOIN attendance a ON s.system_id = a.student_id AND a.date = $1
+      ORDER BY s.system_id ASC
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, [today]);
 
     // Transform data for Excel with serial number
     const excelData = result.rows.map((row, index) => ({

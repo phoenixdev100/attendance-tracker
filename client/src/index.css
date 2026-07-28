@@ -44,6 +44,16 @@ code {
   font-weight: 400;
 }
 
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 @media (max-width: 600px) {
   .card {
     padding: 20px;

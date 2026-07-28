@@ -39,13 +39,13 @@ const UserDashboard = ({ user, onLogout }) => {
             if (!response.data.valid) {
                 localStorage.removeItem('attendancePasscode');
                 showToast('Access denied: Passcode has been changed or expired', 'error');
-                window.location.reload();
+                setTimeout(() => window.location.reload(), 2000);
             }
         } catch (error) {
             console.error('Error validating passcode:', error);
             localStorage.removeItem('attendancePasscode');
             showToast('Access denied: Passcode validation failed', 'error');
-            window.location.reload();
+            setTimeout(() => window.location.reload(), 2000);
         }
     }, [showToast]);
 

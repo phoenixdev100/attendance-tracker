@@ -2,7 +2,7 @@ const ExcelJS = require('exceljs');
 const path = require('path');
 
 // Configuration
-const NUM_STUDENTS = 1000;
+const NUM_STUDENTS = 10000;
 const OUTPUT_FILE = path.join(__dirname, 'uploads', 'sample-students.xlsx');
 
 // Sample data

@@ -152,6 +152,12 @@ const UserDashboard = ({ user, onLogout }) => {
                                                         <span className="text-slate-500 truncate">{student.section}</span>
                                                     </>
                                                 )}
+                                                {student.year && (
+                                                    <>
+                                                        <span className="text-slate-400">|</span>
+                                                        <span className="text-slate-500 truncate">Year: {student.year}</span>
+                                                    </>
+                                                )}
                                             </div>
                                             <div className="flex items-center gap-2 shrink-0">
                                                 <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">

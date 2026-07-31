@@ -95,6 +95,7 @@ for (const row of data) {
 
   const dept =
     row['Department'] ||
+    row['department'] ||
     row['dept'] ||
     row['Stream'] ||
     row['stream'] ||
@@ -105,7 +106,12 @@ for (const row of data) {
     row['section'] ||
     row['SECTION'];
 
-  if (!systemId || !name || !teamIdsValue || !dept || !section) {
+  const year =
+    row['Year'] ||
+    row['year'] ||
+    row['YEAR'];
+
+  if (!systemId || !name || !teamIdsValue || !dept || !section || !year) {
     continue;
   }
 
@@ -113,13 +119,15 @@ for (const row of data) {
   const cleanName = name.toString().trim();
   const cleanDept = dept.toString().trim();
   const cleanSection = section.toString().trim();
+  const cleanYear = year ? parseInt(year.toString().trim()) : null;
 
   // Store student once
   studentsData.set(cleanSystemId, {
     systemId: cleanSystemId,
     name: cleanName,
     dept: cleanDept,
-    section: cleanSection
+    section: cleanSection,
+    year: cleanYear
   });
 
   // Split comma-separated team IDs
@@ -184,12 +192,12 @@ for (const row of data) {
       const values = [];
       let index = 1;
       for (const student of chunk) {
-        placeholders.push(`($${index}, $${index + 1}, $${index + 2}, $${index + 3})`);
-        values.push(student.systemId, student.name, student.dept, student.section);
-        index += 4;
+        placeholders.push(`($${index}, $${index + 1}, $${index + 2}, $${index + 3}, $${index + 4})`);
+        values.push(student.systemId, student.name, student.dept, student.section, student.year);
+        index += 5;
       }
       await client.query(
-        `INSERT INTO students (system_id, name, dept, section) VALUES ${placeholders.join(', ')} ON CONFLICT (system_id) DO UPDATE SET name = EXCLUDED.name, dept = EXCLUDED.dept, section = EXCLUDED.section`,
+        `INSERT INTO students (system_id, name, dept, section, year) VALUES ${placeholders.join(', ')} ON CONFLICT (system_id) DO UPDATE SET name = EXCLUDED.name, dept = EXCLUDED.dept, section = EXCLUDED.section, year = EXCLUDED.year`,
         values
       );
     }

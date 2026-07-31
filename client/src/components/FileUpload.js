@@ -74,7 +74,7 @@ const FileUpload = ({ onUploadSuccess }) => {
       <div className="upload-header">
         <h2>📊 Upload Student Data</h2>
         <p className="upload-description">
-          Upload an Excel file with your student data. Required columns: <strong>system_id</strong>, <strong>name</strong>, <strong>dept</strong>, <strong>section</strong>, <strong>team_id</strong>
+          Upload an Excel file with your student data. Required columns: <strong>system_id</strong>, <strong>name</strong>, <strong>dept</strong>, <strong>section</strong>, <strong>year</strong>, <strong>team_id</strong>
         </p>
       </div>
 

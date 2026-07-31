@@ -650,6 +650,9 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
                   {studentInfo.section && (
                     <div className="text-[9px] text-slate-500 truncate">| {studentInfo.section}</div>
                   )}
+                  {studentInfo.year && (
+                    <div className="text-[9px] text-slate-500 truncate">| Year: {studentInfo.year}</div>
+                  )}
                 </div>
                 {studentInfo.team_names && (
                   <div className="text-[9px] text-slate-500 truncate">{studentInfo.team_names}</div>
@@ -751,6 +754,9 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
                     {member.section && (
                       <div className="text-[9px] text-slate-500 truncate">{member.section}</div>
                     )}
+                    {member.year && (
+                      <div className="text-[9px] text-slate-500 truncate">Year: {member.year}</div>
+                    )}
                     {member.team_names && (
                       <div className="text-[9px] text-slate-500 truncate">{member.team_names}</div>
                     )}
@@ -844,6 +850,12 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
                           <>
                             <span className="text-slate-400">|</span>
                             <span className="text-slate-500 truncate">{student.section}</span>
+                          </>
+                        )}
+                        {student.year && (
+                          <>
+                            <span className="text-slate-400">|</span>
+                            <span className="text-slate-500 truncate">Year: {student.year}</span>
                           </>
                         )}
                       </div>

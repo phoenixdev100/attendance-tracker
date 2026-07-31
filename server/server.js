@@ -115,6 +115,7 @@ const initializeDatabase = async () => {
         name VARCHAR(100) NOT NULL,
         dept VARCHAR(100) NOT NULL,
         section VARCHAR(100),
+        year INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -1185,14 +1186,14 @@ app.post('/api/upload-students', upload.single('excelFile'), async (req, res) =>
     }
 
     // Validate required columns
-    const requiredColumns = ['system_id', 'name', 'dept', 'section', 'team_id'];
+    const requiredColumns = ['system_id', 'name', 'dept', 'section', 'team_id', 'year'];
     const firstRow = data[0];
     const missingColumns = requiredColumns.filter(col => !(col in firstRow));
 
     if (missingColumns.length > 0) {
       return res.status(400).json({
         success: false,
-        message: `Missing required columns: ${missingColumns.join(', ')}. Required: system_id, name, dept, section, team_id`
+        message: `Missing required columns: ${missingColumns.join(', ')}. Required: system_id, name, dept, section, team_id, year`
       });
     }
 
@@ -1204,8 +1205,9 @@ app.post('/api/upload-students', upload.single('excelFile'), async (req, res) =>
       const dept = row.dept?.toString().trim();
       const section = row.section?.toString().trim();
       const teamId = row.team_id?.toString().trim().toUpperCase();
+      const year = row.year ? parseInt(row.year.toString().trim()) : null;
 
-      if (!systemId || !name || !dept || !section || !teamId) {
+      if (!systemId || !name || !dept || !section || !teamId || !year) {
         missingFieldRows.push({
           row: index + 2,
           data: row
@@ -1224,7 +1226,7 @@ app.post('/api/upload-students', upload.single('excelFile'), async (req, res) =>
 
       return res.status(400).json({
         success: false,
-        message: 'Upload rejected. Some rows are missing required fields (system_id, name, dept, section, team_id).',
+        message: 'Upload rejected. Some rows are missing required fields (system_id, name, dept, section, team_id, year).',
         invalidRows: missingFieldRows
       });
     }
@@ -1244,6 +1246,7 @@ app.post('/api/upload-students', upload.single('excelFile'), async (req, res) =>
           const dept = row.dept?.toString().trim();
           const section = row.section?.toString().trim();
           const teamId = row.team_id?.toString().trim().toUpperCase();
+          const year = row.year ? parseInt(row.year.toString().trim()) : null;
 
           // Check if student exists
           const existingStudent = await client.query(
@@ -1254,15 +1257,15 @@ app.post('/api/upload-students', upload.single('excelFile'), async (req, res) =>
           if (existingStudent.rows.length > 0) {
             // Update existing student
             await client.query(
-              'UPDATE students SET name = $1, dept = $2, section = $3 WHERE UPPER(system_id) = $4',
-              [name, dept, section, systemId]
+              'UPDATE students SET name = $1, dept = $2, section = $3, year = $4 WHERE UPPER(system_id) = $5',
+              [name, dept, section, year, systemId]
             );
             updatedStudents++;
           } else {
             // Insert new student
             await client.query(
-              'INSERT INTO students (system_id, name, dept, section) VALUES ($1, $2, $3, $4)',
-              [systemId, name, dept, section]
+              'INSERT INTO students (system_id, name, dept, section, year) VALUES ($1, $2, $3, $4, $5)',
+              [systemId, name, dept, section, year]
             );
             insertedStudents++;
           }
@@ -1776,6 +1779,7 @@ app.get('/api/export-excel', async (req, res) => {
         s.name,
         s.dept,
         s.section,
+        s.year,
         sta.team_ids,
         sta.team_names,
         a.date,
@@ -1797,6 +1801,7 @@ app.get('/api/export-excel', async (req, res) => {
       name: row.name,
       dept: row.dept || 'Not Set',
       section: row.section || 'Not Set',
+      year: row.year || 'N/A',
       status: row.present === null ? 'No Record' : (row.present ? 'Present' : 'Absent'),
       recorded_at: row.recorded_at ? new Date(row.recorded_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'N/A'
     }));
@@ -1813,6 +1818,7 @@ app.get('/api/export-excel', async (req, res) => {
       { header: 'Student Name', key: 'name', width: 25 },
       { header: 'Department', key: 'dept', width: 30 },
       { header: 'Section', key: 'section', width: 15 },
+      { header: 'Year', key: 'year', width: 8 },
       { header: 'Status', key: 'status', width: 10 },
       { header: 'Recorded At', key: 'recorded_at', width: 22 }
     ];

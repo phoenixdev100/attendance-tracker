@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS students (
     name VARCHAR(100) NOT NULL,
     dept VARCHAR(100) NOT NULL,
     section VARCHAR(100),
+    year INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -68,8 +69,8 @@ CREATE INDEX IF NOT EXISTS idx_student_teams_team ON student_teams(team_id);
 
 -- Seed default settings
 INSERT INTO settings (setting_key, setting_value, description)
-VALUES ('team_feature_enabled', 'false', 'Enable or disable team-based attendance marking')
-ON CONFLICT (setting_key) DO NOTHING;
+VALUES ('team_feature_enabled', 'true', 'Enable or disable team-based attendance marking')
+ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value;
 
 INSERT INTO settings (setting_key, setting_value, description)
 VALUES ('attendance_passcode', '', 'Daily passcode required for regular users to mark attendance')

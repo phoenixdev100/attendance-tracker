@@ -235,6 +235,11 @@ const StatsPage = () => {
                               Section: {student.section}
                             </div>
                           )}
+                          {student.year && (
+                            <div className="student-section" style={{ fontSize: '0.85em', color: '#666', marginTop: '4px' }}>
+                              Year: {student.year}
+                            </div>
+                          )}
                           {student.marked_by_name && (
                             <div className="marked-by" style={{ fontSize: '0.85em', color: '#666', marginTop: '4px' }}>
                               👤 Marked by: {student.marked_by_name}

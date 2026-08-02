@@ -890,7 +890,7 @@ app.post('/api/mark-present', async (req, res) => {
 
       if (trimmedSystemId) {
         // Mark individual student by system ID
-        const studentQuery = 'SELECT system_id, name, dept, section, year FROM students WHERE system_id = $1';
+        const studentQuery = 'SELECT system_id, name, dept, year FROM students WHERE system_id = $1';
         const studentResult = await client.query(studentQuery, [trimmedSystemId]);
 
         if (studentResult.rows.length === 0) {
@@ -906,7 +906,7 @@ app.post('/api/mark-present', async (req, res) => {
       } else if (trimmedTeamId) {
         // Mark all students in the team
         const teamQuery = `
-          SELECT s.system_id, s.name, s.dept, s.section, s.year, t.team_id, t.team_name
+          SELECT s.system_id, s.name, s.dept, s.year, t.team_id, t.team_name
           FROM students s
           JOIN student_teams st ON s.system_id = st.student_id
           JOIN teams t ON st.team_id = t.team_id
@@ -1530,7 +1530,7 @@ app.post('/api/mark-team-attendance', async (req, res) => {
 
       // Verify team exists and get all team members
       const teamQuery = `
-        SELECT s.system_id, s.name, s.dept, s.section, s.year
+        SELECT s.system_id, s.name, s.dept, s.year
         FROM students s
         JOIN student_teams st ON s.system_id = st.student_id
         JOIN teams t ON st.team_id = t.team_id
@@ -1643,7 +1643,7 @@ app.post('/api/mark-absent', async (req, res) => {
 
       if (trimmedSystemId) {
         // Mark individual student absent
-        const studentQuery = 'SELECT system_id, name, dept, section, year FROM students WHERE UPPER(system_id) = $1';
+        const studentQuery = 'SELECT system_id, name, dept, year FROM students WHERE UPPER(system_id) = $1';
         const studentResult = await client.query(studentQuery, [trimmedSystemId]);
 
         if (studentResult.rows.length === 0) {
@@ -1660,7 +1660,7 @@ app.post('/api/mark-absent', async (req, res) => {
         // Mark all students in team absent
         isTeamOperation = true;
         const teamQuery = `
-          SELECT s.system_id, s.name, s.dept, s.section, s.year
+          SELECT s.system_id, s.name, s.dept, s.year
           FROM students s
           JOIN student_teams st ON s.system_id = st.student_id
           JOIN teams t ON st.team_id = t.team_id

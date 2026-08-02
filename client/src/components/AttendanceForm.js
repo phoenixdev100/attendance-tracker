@@ -655,7 +655,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
                   )}
                 </div>
                 {studentInfo.team_names && (
-                  <div className="text-[9px] text-slate-500 truncate">Team {studentInfo.team_names}</div>
+                  <div className="text-[9px] text-slate-500 truncate">{studentInfo.team_names}</div>
                 )}
                 {studentInfo.recordedAt && (
                   <div className="text-[9px] text-slate-400">
@@ -758,7 +758,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
                       <div className="text-[9px] text-slate-500 truncate">| Year: {member.year}</div>
                     )}
                     {member.team_names && (
-                      <div className="text-[9px] text-slate-500 truncate">Team {member.team_names}</div>
+                      <div className="text-[9px] text-slate-500 truncate">{member.team_names}</div>
                     )}
                   </div>
                 ))}

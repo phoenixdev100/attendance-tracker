@@ -648,14 +648,14 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
                     <div className="text-[9px] text-slate-500 truncate">| {studentInfo.dept}</div>
                   )}
                   {studentInfo.section && (
-                    <div className="text-[9px] text-slate-500 truncate">| {studentInfo.section}</div>
+                    <div className="text-[9px] text-slate-500 truncate">| Section: {studentInfo.section}</div>
                   )}
                   {studentInfo.year && (
                     <div className="text-[9px] text-slate-500 truncate">| Year: {studentInfo.year}</div>
                   )}
                 </div>
                 {studentInfo.team_names && (
-                  <div className="text-[9px] text-slate-500 truncate">{studentInfo.team_names}</div>
+                  <div className="text-[9px] text-slate-500 truncate">Team {studentInfo.team_names}</div>
                 )}
                 {studentInfo.recordedAt && (
                   <div className="text-[9px] text-slate-400">
@@ -749,16 +749,16 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
                     </div>
                     <div className="text-[9px] text-slate-500 truncate">{member.systemId}</div>
                     {member.dept && (
-                      <div className="text-[9px] text-slate-500 truncate">{member.dept}</div>
+                      <div className="text-[9px] text-slate-500 truncate">| {member.dept}</div>
                     )}
                     {member.section && (
-                      <div className="text-[9px] text-slate-500 truncate">{member.section}</div>
+                      <div className="text-[9px] text-slate-500 truncate">| Section: {member.section}</div>
                     )}
                     {member.year && (
-                      <div className="text-[9px] text-slate-500 truncate">Year: {member.year}</div>
+                      <div className="text-[9px] text-slate-500 truncate">| Year: {member.year}</div>
                     )}
                     {member.team_names && (
-                      <div className="text-[9px] text-slate-500 truncate">{member.team_names}</div>
+                      <div className="text-[9px] text-slate-500 truncate">Team {member.team_names}</div>
                     )}
                   </div>
                 ))}
@@ -849,7 +849,7 @@ const AttendanceForm = ({ user, onLogout, isUserDashboard = false, showAdminNav 
                         {student.section && (
                           <>
                             <span className="text-slate-400">|</span>
-                            <span className="text-slate-500 truncate">{student.section}</span>
+                            <span className="text-slate-500 truncate">Section: {student.section}</span>
                           </>
                         )}
                         {student.year && (

@@ -890,7 +890,7 @@ app.post('/api/mark-present', async (req, res) => {
 
       if (trimmedSystemId) {
         // Mark individual student by system ID
-        const studentQuery = 'SELECT system_id, name, dept FROM students WHERE system_id = $1';
+        const studentQuery = 'SELECT system_id, name, dept, year FROM students WHERE system_id = $1';
         const studentResult = await client.query(studentQuery, [trimmedSystemId]);
 
         if (studentResult.rows.length === 0) {
@@ -906,10 +906,10 @@ app.post('/api/mark-present', async (req, res) => {
       } else if (trimmedTeamId) {
         // Mark all students in the team
         const teamQuery = `
-          SELECT s.system_id, s.name, s.dept, t.team_id, t.team_name 
-          FROM students s 
+          SELECT s.system_id, s.name, s.dept, s.year, t.team_id, t.team_name
+          FROM students s
           JOIN student_teams st ON s.system_id = st.student_id
-          JOIN teams t ON st.team_id = t.team_id 
+          JOIN teams t ON st.team_id = t.team_id
           WHERE UPPER(t.team_id) = $1
         `;
         const teamResult = await client.query(teamQuery, [trimmedTeamId]);
@@ -1040,7 +1040,7 @@ app.get('/api/today-stats', async (req, res) => {
 
     // Get list of present students with details
     const presentStudentsQuery = `
-      SELECT s.system_id, s.name, s.dept, s.section, a.recorded_at, a.marked_by,
+      SELECT s.system_id, s.name, s.dept, s.section, s.year, a.recorded_at, a.marked_by,
              u.email as marked_by_email, u.name as marked_by_name,
              STRING_AGG(DISTINCT t.team_id, ', ') as team_ids,
              STRING_AGG(DISTINCT t.team_name, ', ') as team_names
@@ -1050,7 +1050,7 @@ app.get('/api/today-stats', async (req, res) => {
       LEFT JOIN student_teams st ON s.system_id = st.student_id
       LEFT JOIN teams t ON st.team_id = t.team_id
       WHERE a.date = $1 AND a.present = true
-      GROUP BY s.system_id, s.name, s.dept, s.section, a.recorded_at, a.marked_by, u.email, u.name
+      GROUP BY s.system_id, s.name, s.dept, s.section, s.year, a.recorded_at, a.marked_by, u.email, u.name
       ORDER BY a.recorded_at ASC
     `;
     const presentStudentsResult = await pool.query(presentStudentsQuery, [today]);
@@ -1130,7 +1130,7 @@ app.get('/api/user-stats/:userId', async (req, res) => {
 
     // Get list of students marked by this user today
     const markedStudentsQuery = `
-      SELECT s.system_id, s.name, s.dept, s.section, a.recorded_at,
+      SELECT s.system_id, s.name, s.dept, s.section, s.year, a.recorded_at,
              STRING_AGG(DISTINCT t.team_id, ', ') as team_ids,
              STRING_AGG(DISTINCT t.team_name, ', ') as team_names
       FROM students s
@@ -1138,7 +1138,7 @@ app.get('/api/user-stats/:userId', async (req, res) => {
       LEFT JOIN student_teams st ON s.system_id = st.student_id
       LEFT JOIN teams t ON st.team_id = t.team_id
       WHERE a.marked_by = $1 AND a.date = $2 AND a.present = true
-      GROUP BY s.system_id, s.name, s.dept, s.section, a.recorded_at
+      GROUP BY s.system_id, s.name, s.dept, s.section, s.year, a.recorded_at
       ORDER BY a.recorded_at ASC
     `;
     const markedStudentsResult = await pool.query(markedStudentsQuery, [userId, today]);
@@ -1365,13 +1365,14 @@ app.get('/api/team/:teamId', async (req, res) => {
   try {
     // Get team info and members with today's attendance status
     const query = `
-      SELECT 
+      SELECT
         t.team_id,
         t.team_name,
         s.system_id,
         s.name as student_name,
         s.dept,
         s.section,
+        s.year,
         COALESCE(a.present, false) as is_present_today,
         a.recorded_at
       FROM teams t
@@ -1414,6 +1415,7 @@ app.get('/api/team/:teamId', async (req, res) => {
       name: row.student_name,
       dept: row.dept,
       section: row.section,
+      year: row.year,
       isPresentToday: row.is_present_today,
       recordedAt: row.recorded_at
     }));
@@ -1452,11 +1454,12 @@ app.get('/api/student/:systemId', async (req, res) => {
   try {
     // Get student info with today's attendance status and team info
     const query = `
-      SELECT 
+      SELECT
         s.system_id,
         s.name,
         s.dept,
         s.section,
+        s.year,
         STRING_AGG(DISTINCT t.team_id, ', ') as team_ids,
         STRING_AGG(DISTINCT t.team_name, ', ') as team_names,
         COALESCE(a.present, false) as is_present_today,
@@ -1466,7 +1469,7 @@ app.get('/api/student/:systemId', async (req, res) => {
       LEFT JOIN teams t ON st.team_id = t.team_id
       LEFT JOIN attendance a ON s.system_id = a.student_id AND a.date = $1
       WHERE UPPER(s.system_id) = $2
-      GROUP BY s.system_id, s.name, s.dept, s.section, a.present, a.recorded_at
+      GROUP BY s.system_id, s.name, s.dept, s.section, s.year, a.present, a.recorded_at
     `;
 
     const result = await pool.query(query, [today, trimmedSystemId]);
@@ -1488,6 +1491,7 @@ app.get('/api/student/:systemId', async (req, res) => {
         team_ids: student.team_ids,
         dept: student.dept,
         section: student.section,
+        year: student.year,
         team_names: student.team_names,
         isPresentToday: student.is_present_today,
         recordedAt: student.recorded_at
@@ -1526,10 +1530,10 @@ app.post('/api/mark-team-attendance', async (req, res) => {
 
       // Verify team exists and get all team members
       const teamQuery = `
-        SELECT s.system_id, s.name, s.dept 
-        FROM students s 
+        SELECT s.system_id, s.name, s.dept, s.year
+        FROM students s
         JOIN student_teams st ON s.system_id = st.student_id
-        JOIN teams t ON st.team_id = t.team_id 
+        JOIN teams t ON st.team_id = t.team_id
         WHERE UPPER(t.team_id) = $1
       `;
       const teamResult = await client.query(teamQuery, [trimmedTeamId]);
@@ -1639,7 +1643,7 @@ app.post('/api/mark-absent', async (req, res) => {
 
       if (trimmedSystemId) {
         // Mark individual student absent
-        const studentQuery = 'SELECT system_id, name, dept FROM students WHERE UPPER(system_id) = $1';
+        const studentQuery = 'SELECT system_id, name, dept, year FROM students WHERE UPPER(system_id) = $1';
         const studentResult = await client.query(studentQuery, [trimmedSystemId]);
 
         if (studentResult.rows.length === 0) {
@@ -1656,10 +1660,10 @@ app.post('/api/mark-absent', async (req, res) => {
         // Mark all students in team absent
         isTeamOperation = true;
         const teamQuery = `
-          SELECT s.system_id, s.name, s.dept 
-          FROM students s 
+          SELECT s.system_id, s.name, s.dept, s.year
+          FROM students s
           JOIN student_teams st ON s.system_id = st.student_id
-          JOIN teams t ON st.team_id = t.team_id 
+          JOIN teams t ON st.team_id = t.team_id
           WHERE UPPER(t.team_id) = $1
         `;
         const teamResult = await client.query(teamQuery, [trimmedTeamId.toUpperCase()]);

@@ -80,10 +80,14 @@ pool.on('connect', (client) => {
 pool.connect((err, client, release) => {
   if (err) {
     console.error('Error connecting to the database:', err);
-    process.exit(1);
+    // Don't exit in serverless environments - let the request handle the error
+    if (!process.env.VERCEL) {
+      process.exit(1);
+    }
+  } else {
+    console.log('Connected to PostgreSQL database');
+    release();
   }
-  console.log('Connected to PostgreSQL database');
-  release();
 });
 
 // Helper function to get today's date in YYYY-MM-DD format
@@ -202,8 +206,15 @@ const initializeDatabase = async () => {
   }
 };
 
-// Initialize database on startup
-initializeDatabase();
+// Initialize database on startup (non-blocking in serverless)
+if (!process.env.VERCEL) {
+  initializeDatabase();
+} else {
+  // In serverless, initialize asynchronously without blocking
+  initializeDatabase().catch(err => {
+    console.error('Database initialization error (serverless):', err);
+  });
+}
 
 // Handle React routing - serve React app for non-API routes
 // Handle React routing - serve React app for non-API routes
